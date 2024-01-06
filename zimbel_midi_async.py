@@ -19,8 +19,8 @@ button_clock = -1
 zimbel_state = False
 led.value(zimbel_state)
 
-BUTTON_HOLD_TIME = 3000
-BLINK_DURATION = 10000
+BUTTON_HOLD_TIME = 1000 # 3000
+BLINK_DURATION = 10000 # 30000 ?
 
 debounce_time = 50 #250
 
@@ -67,9 +67,11 @@ def zimbel_off():
 def change_mode(new_mode):
     global mode, midi_triggers
     if mode != new_mode:
-        print('Mode changed to ', new_mode)
+        print('Mode changed to', new_mode)
         mode = new_mode
         if mode == MODE_PROGRAM:
+            # Perform these actions when entering program mode
+            zimbel_off()
             midi_triggers = []
 
 
@@ -96,31 +98,30 @@ async def read_midi_task():
         if midi_uart.any():
             midi_data = midi_uart.read()
             
-            # handle midi data differently based on current mode
+            # Handle midi data differently based on current mode
             if mode == MODE_ZIMBEL:
-                # handle midi messages while in zimbel mode
+                # Handle midi messages while in zimbel mode
                 # i.e. listen for midi trigger
+                # Filter out Active Sensing byte
                 if midi_data != b'\xfe':
                     print('Midi message:', midi_data)
-
                 if midi_trigger_on in midi_data:
-                    print('midi_trigger_on')
                     zimbel_on()
                 elif midi_trigger_off in midi_data:
-                    print('midi_trigger_off')
                     zimbel_off()
             elif mode == MODE_PROGRAM:
-                # handle midi messages while in program mode
+                # Handle midi messages while in program mode
                 # i.e. listen for midi and assign to trigger
-                # filter out Active Sensing byte 0xFE while in program mode
+                # Filter out Active Sensing byte
                 if midi_data != b'\xfe':
-                    midi_triggers.append(midi_data)
+                    trimmed_data = midi_data[1:] # Remove status byte from beginning of message
+                    midi_triggers.append(trimmed_data)
 
                     if len(midi_triggers) == 1:
-                        print("Assigning to midi_trigger_on:", midi_data)
+                        print("Assigning to midi_trigger_on:", trimmed_data)
 
                     if len(midi_triggers) == 2:
-                        print("Assigning to midi_trigger_off:", midi_data)
+                        print("Assigning to midi_trigger_off:", trimmed_data)
 
                     if len(midi_triggers) >= 2:
                         save_midi_triggers(midi_triggers)
@@ -136,7 +137,7 @@ async def read_button_task():
     while True:
         if button.value() == 0:  # Button is being pressed
             if not button_state:
-                print('Button pressed')
+                #print('Button pressed')
                 button_state = True
                 button_clock = time.ticks_ms()
                 
@@ -153,7 +154,7 @@ async def read_button_task():
             
         else:  # Button is not being pressed
             if button_state:
-                print('Button released')
+                #print('Button released')
                 button_state = False
         
         # Sleep for a short duration to avoid blocking the event loop
