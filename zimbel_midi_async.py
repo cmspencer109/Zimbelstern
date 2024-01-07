@@ -127,7 +127,7 @@ async def read_midi_task():
                         save_midi_triggers(midi_triggers)
                         change_mode(MODE_ZIMBEL)
         
-        # Sleep for a short duration to avoid blocking the event loop
+        # Yield control to event loop
         await asyncio.sleep_ms(10)
 
 
@@ -157,7 +157,7 @@ async def read_button_task():
                 #print('Button released')
                 button_state = False
         
-        # Sleep for a short duration to avoid blocking the event loop
+        # Yield control to event loop
         await asyncio.sleep_ms(10)
 
 
