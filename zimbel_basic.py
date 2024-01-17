@@ -1,8 +1,8 @@
 from machine import Pin
 import time
 
-button = Pin(16, Pin.IN, Pin.PULL_UP)
-led = Pin(17, Pin.OUT)
+button = Pin(15, Pin.IN, Pin.PULL_UP)
+led = Pin(14, Pin.OUT)
 
 button_state = False
 zimbel_state = False

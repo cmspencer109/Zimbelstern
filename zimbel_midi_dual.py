@@ -9,8 +9,8 @@ ACTIVE_SENSING_BYTE = 0xFE
 
 # Initialize pins
 midi_uart = machine.UART(0, baudrate=31250, tx=Pin(0), rx=Pin(1))
-button = Pin(16, Pin.IN, Pin.PULL_UP)
-led = Pin(17, Pin.OUT)
+button = Pin(15, Pin.IN, Pin.PULL_UP)
+led = Pin(14, Pin.OUT)
 
 # Modes
 MODE_ZIMBEL = "MODE_ZIMBEL"

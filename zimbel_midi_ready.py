@@ -6,13 +6,13 @@ from machine import Pin
 
 # Initialize pins
 midi_uart = machine.UART(0, baudrate=31250, tx=Pin(0), rx=Pin(1))
-button = Pin(16, Pin.IN, Pin.PULL_UP)
-led = Pin(17, Pin.OUT)
+button = Pin(15, Pin.IN, Pin.PULL_UP)
+led = Pin(14, Pin.OUT)
 
 # button name ideas:
 # ready, queue, set, mark, prime, pre
-button_ready = Pin(18, Pin.IN, Pin.PULL_UP)
-led_ready = Pin(19, Pin.OUT)
+button_ready = Pin(13, Pin.IN, Pin.PULL_UP)
+led_ready = Pin(12, Pin.OUT)
 
 # Modes
 MODE_ZIMBEL = "MODE_ZIMBEL"
