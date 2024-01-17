@@ -30,7 +30,7 @@ zimbel_ready = False
 BUTTON_HOLD_TIME = 1000 # 3000
 BLINK_DURATION = 10000 # 30000 ?
 
-debounce_time = 50 #250
+debounce_time = 250 # 50-250 ?
 
 midi_trigger_file = "midi_trigger.txt"
 midi_trigger_on = ""
@@ -116,48 +116,65 @@ async def blink():
     change_mode(MODE_ZIMBEL)
 
 
+# Note on helper
+def is_note_on(midi_bytes):
+    # Check if the list has at least 3 elements
+    if len(midi_bytes) < 3:
+        return False
+
+    # Check if the status byte indicates a Note On message (status byte starts with '1001' in binary)
+    if (midi_bytes[0] & 0xF0) == 0x90:
+        # Check if the velocity is greater than 0 (to distinguish Note On from Note Off)
+        if midi_bytes[2] > 0:
+            return True
+
+    return False
+
+
 async def read_midi_task():
     global mode, midi_trigger_on, midi_trigger_off, midi_triggers, zimbel_ready
 
     while True:
         if midi_uart.any():
-            midi_data = midi_uart.read()
+            midi_bytes = list(midi_uart.read())
             
             # Handle midi data differently based on current mode
             if mode == MODE_ZIMBEL:
+                # Filter out Active Sensing byte
+                if midi_bytes == [0xFE]:
+                    continue
+                
                 # Handle midi messages while in zimbel mode
                 # i.e. listen for midi trigger
-                # Filter out Active Sensing byte
-                if midi_data != b'\xfe':
-                    print('Midi message:', midi_data)
-                if midi_trigger_on in midi_data:
+                print('Midi message:', midi_bytes)
+                if midi_trigger_on in midi_bytes:
                     zimbel_on()
-                elif midi_trigger_off in midi_data:
+                elif midi_trigger_off in midi_bytes:
                     zimbel_off()
 
-                status_byte = list(midi_data)[0]
                 # if zimbel ready and note on
-                if zimbel_ready and (0x90 <= status_byte <= 0x9F):
-                    print(hex(status_byte))
+                if zimbel_ready and is_note_on(midi_bytes):
+                    print('zimbel ready and note on')
                     zimbel_on()
 
             elif mode == MODE_PROGRAM:
                 # Handle midi messages while in program mode
                 # i.e. listen for midi and assign to trigger
                 # Filter out Active Sensing byte
-                if midi_data != b'\xfe':
-                    trimmed_data = midi_data[1:] # Remove status byte from beginning of message
-                    midi_triggers.append(trimmed_data)
+                if midi_bytes != [0xFE]:
+                    print('Program mode not working right now')
+                    # trimmed_data = midi_bytes[1:] # Remove status byte from beginning of message
+                    # midi_triggers.append(trimmed_data)
 
-                    if len(midi_triggers) == 1:
-                        print("Assigning to midi_trigger_on:", trimmed_data)
+                    # if len(midi_triggers) == 1:
+                    #     print("Assigning to midi_trigger_on:", trimmed_data)
 
-                    if len(midi_triggers) == 2:
-                        print("Assigning to midi_trigger_off:", trimmed_data)
+                    # if len(midi_triggers) == 2:
+                    #     print("Assigning to midi_trigger_off:", trimmed_data)
 
-                    if len(midi_triggers) >= 2:
-                        save_midi_triggers(midi_triggers)
-                        change_mode(MODE_ZIMBEL)
+                    # if len(midi_triggers) >= 2:
+                    #     save_midi_triggers(midi_triggers)
+                    #     change_mode(MODE_ZIMBEL)
         
         # Yield control to event loop
         await asyncio.sleep_ms(10)
