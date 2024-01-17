@@ -85,24 +85,15 @@ print(RODGERS_STOP_SYS_EX_CODE_ASSIGNMENTS['SWELL'][(8, 0)])  # Output: "8' Viol
 #         midi_trigger_bit_index = bit_index
 #         print('Midi trigger saved')
 
+# Binding process
+# turn on
+# turn off
+# find diff between these two (data bytes only)
+# save byte and bit index
 
-def store_midi_trigger(data_bytes):
-    # Get the first non-zero byte
-    for byte_index, byte in enumerate(data_bytes):
-        if byte != 0:
-            # Get bits
-            bits = format(byte, '08b')
-            # Iterate from right to left to find index of first set bit
-            for bit_index, bit in enumerate(bits[::-1]):
-                if bit == '1':
-                    set_bit_index = 7 - bit_index
-                    print('Byte: {} Bit: {}'.format(byte_index, bit_index))
-                    return byte_index, bit_index
-            break
-    else:
-        print('No non-zero bytes were found')
-        # return -1, -1
-
+# Activating process
+# if sysex, check data bytes only
+# if byte and bit index is set, turn zimbel on
 
 def rodgers_handle_stop_change(data_bytes):
     print(f'Stop change unhandled. Data bytes: {data_bytes}')
