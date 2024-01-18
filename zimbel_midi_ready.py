@@ -3,6 +3,8 @@ import utime as time
 import uos
 from machine import Pin 
 
+#TODO handle ID when organ turns on ?
+
 
 # Initialize pins
 midi_uart = machine.UART(0, baudrate=31250, tx=Pin(0), rx=Pin(1))
@@ -32,15 +34,13 @@ BLINK_DURATION = 10000 # 30000 ?
 
 debounce_time = 250 # 50-250 ?
 
-midi_trigger_file = "midi_trigger.txt"
-midi_trigger_on = ""
-midi_trigger_off = ""
-midi_triggers = []
+midi_trigger_filename = 'midi_trigger.txt'
+midi_trigger_bytes = []
 
 # Setup
 # If the file already exists, save the contents to the trigger variables
-if midi_trigger_file in uos.listdir():
-    with open(midi_trigger_file, "rb") as file:
+if midi_trigger_filename in uos.listdir():
+    with open(midi_trigger_filename, "rb") as file:
         midi_trigger_on = file.readline().strip()
         midi_trigger_off = file.readline().strip()
         print('Loaded midi triggers')
@@ -48,30 +48,22 @@ if midi_trigger_file in uos.listdir():
         print('midi_trigger_off:', midi_trigger_off)
 
 
-def save_midi_triggers(midi_triggers):
-    global midi_trigger_on, midi_trigger_off
-    with open(midi_trigger_file, "wb") as file:
-        file.write(midi_triggers[0] + b'\n')
-        file.write(midi_triggers[1] + b'\n')
-        midi_trigger_on = midi_triggers[0]
-        midi_trigger_off = midi_triggers[1]
-        print('Midi triggers saved')
-
-
 def zimbel_on():
     global zimbel_state
-    zimbel_state = True
-    led.value(zimbel_state)
-    print('Zimbel on')
-    zimbel_ready_off()
+    if not zimbel_state:
+        zimbel_state = True
+        led.value(zimbel_state)
+        print('Zimbel on')
+        zimbel_ready_off()
 
 
 def zimbel_off():
     global zimbel_state
-    zimbel_state = False
-    led.value(zimbel_state)
-    print('Zimbel off')
-    zimbel_ready_off()
+    if zimbel_state:
+        zimbel_state = False
+        led.value(zimbel_state)
+        print('Zimbel off')
+        zimbel_ready_off()
 
 
 def zimbel_ready_on():
@@ -90,14 +82,14 @@ def zimbel_ready_off():
 
 
 def change_mode(new_mode):
-    global mode, midi_triggers
+    global mode, midi_trigger_on_off
     if mode != new_mode:
         print('Mode changed to', new_mode)
         mode = new_mode
         if mode == MODE_PROGRAM:
             # Perform these actions when entering program mode
             zimbel_off()
-            midi_triggers = []
+            midi_trigger_on_off = []
 
 
 async def blink():
@@ -131,8 +123,41 @@ def is_note_on(midi_bytes):
     return False
 
 
+def bits(hex_number, total_width=8):
+    binary_representation = bin(hex_number)[2:]
+    return '0' * (total_width - len(binary_representation)) + binary_representation
+
+
+def bytes_match_trigger(input_bytes):
+    global midi_trigger_bytes
+
+    print('checking if bytes match trigger')
+    print('number of bytes in trigger', len(midi_trigger_bytes))
+    print('number of bytes received', len(input_bytes))
+
+    for i in range(len(midi_trigger_bytes)):
+        # save time by not checking empty bytes
+        # TODO: READY TO TEST
+        if midi_trigger_bytes[i] == 0: continue
+
+        midi_trigger_bits = bits(midi_trigger_bytes[i])
+        input_bits = bits(input_bytes[i])
+
+        print('trigger bits', midi_trigger_bits)
+        print('input bits', input_bits)
+
+        for j in range(8):
+            # print(midi_trigger_bits[j], input_bits[j])
+            # print(type(midi_trigger_bits[j]), type(1))
+
+            if int(midi_trigger_bits[j]) == 1 and int(input_bits[j]) == 0:
+                print('doesnt match trigger, returning false')
+                return False
+    return True
+
+
 async def read_midi_task():
-    global mode, midi_trigger_on, midi_trigger_off, midi_triggers, zimbel_ready
+    global mode, zimbel_ready, midi_trigger_bytes
 
     while True:
         if midi_uart.any():
@@ -143,14 +168,15 @@ async def read_midi_task():
                 # Filter out Active Sensing byte
                 if midi_bytes == [0xFE]:
                     continue
+                print('Midi message:', midi_bytes)
                 
                 # Handle midi messages while in zimbel mode
                 # i.e. listen for midi trigger
-                print('Midi message:', midi_bytes)
-                if midi_trigger_on in midi_bytes:
-                    zimbel_on()
-                elif midi_trigger_off in midi_bytes:
-                    zimbel_off()
+                if midi_bytes[0] == 0xF0: # testing sysex only for now
+                    if bytes_match_trigger(midi_bytes[7:-2]):
+                        zimbel_on()
+                    else: # TODO: READY TO TEST
+                        zimbel_off() 
 
                 # if zimbel ready and note on
                 if zimbel_ready and is_note_on(midi_bytes):
@@ -162,19 +188,11 @@ async def read_midi_task():
                 # i.e. listen for midi and assign to trigger
                 # Filter out Active Sensing byte
                 if midi_bytes != [0xFE]:
-                    print('Program mode not working right now')
-                    # trimmed_data = midi_bytes[1:] # Remove status byte from beginning of message
-                    # midi_triggers.append(trimmed_data)
-
-                    # if len(midi_triggers) == 1:
-                    #     print("Assigning to midi_trigger_on:", trimmed_data)
-
-                    # if len(midi_triggers) == 2:
-                    #     print("Assigning to midi_trigger_off:", trimmed_data)
-
-                    # if len(midi_triggers) >= 2:
-                    #     save_midi_triggers(midi_triggers)
-                    #     change_mode(MODE_ZIMBEL)
+                    print('Program mode only working with Rodgers SYSEX right now')
+                    # save midi trigger
+                    midi_trigger_bytes = midi_bytes[7:-2]
+                    print('Saved midi trigger:', midi_trigger_bytes)
+                    change_mode(MODE_ZIMBEL)
         
         # Yield control to event loop
         await asyncio.sleep_ms(10)
@@ -239,7 +257,7 @@ async def main():
     button_task_handler = asyncio.create_task(read_button_task())
     midi_task_handler = asyncio.create_task(read_midi_task())
     button_ready_task_handler = asyncio.create_task(button_ready_task())
-    #star_handler = #TODO
+    #star_handler = #TODO ?
 
     # Run the event loop
     await asyncio.gather(button_task_handler, midi_task_handler, button_ready_task_handler)
