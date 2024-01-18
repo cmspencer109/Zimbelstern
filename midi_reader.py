@@ -7,11 +7,13 @@ uart = machine.UART(0, baudrate=31250, tx=0, rx=1)
 while True:
     # Read data from UART
     if uart.any():
-        data = uart.read()
+        midi_bytes = list(uart.read())
         
-        # Check if the received byte is not an Active Sensing message (0xFE)
-        if data != b'\xfe':
-            print("Received data: {}".format(data.hex()))
+        # Filter out Active Sensing byte
+        if midi_bytes == [0xFE]:
+            continue
+
+        print(midi_bytes)
     
     # Add a delay to avoid high CPU usage
     time.sleep_ms(10)
