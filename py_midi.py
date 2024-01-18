@@ -70,20 +70,40 @@ RODGERS_STOP_SYS_EX_CODE_ASSIGNMENTS = {
 print(RODGERS_STOP_SYS_EX_CODE_ASSIGNMENTS['GREAT'][(0, 3)])  # Output: "8' Principal"
 print(RODGERS_STOP_SYS_EX_CODE_ASSIGNMENTS['SWELL'][(8, 0)])  # Output: "8' Viola"
 
-# filename = 'midi_trigger.txt'
-# midi_trigger_byte_index = -1
-# midi_trigger_bit_index = -1
+filename = 'midi_trigger.txt'
+midi_trigger_byte_index = -1
+midi_trigger_bit_index = -1
 
-# def store_trigger(bytes):
-#     global midi_trigger_byte_index, midi_trigger_bit_index
 
-#     byte_index, bit_index = identify_byte_and_bit_indexes(bytes)
-    
-#     with open(filename, 'w') as file:
-#         file.write(f'{byte_index} {bit_index}')
-#         midi_trigger_byte_index = byte_index
-#         midi_trigger_bit_index = bit_index
-#         print('Midi trigger saved')
+def find_bit_difference(bytes_on, bytes_off):
+	# Iterate through each pair of corresponding bytes
+	for i, (byte_on, byte_off) in enumerate(zip(bytes_on, bytes_off)):
+		# Find the differing bit
+		xor_result = byte_on ^ byte_off
+		
+		# Check if there is only 1 bit difference
+		if bin(xor_result).count('1') == 1:
+			# Find the differing bit index
+			differing_bit_index = len(bin(xor_result)) - bin(xor_result).rfind('1') - 1
+			
+			# Return the byte index and bit index
+			return i, differing_bit_index
+
+
+def store_trigger_to_file(byte_index, bit_index):
+    global filename, midi_trigger_byte_index, midi_trigger_bit_index
+
+    with open(filename, 'w') as file:
+        file.write(f'{byte_index} {bit_index}')
+        midi_trigger_byte_index = byte_index
+        midi_trigger_bit_index = bit_index
+        print('Midi trigger saved')
+
+
+def save_midi_trigger(bytes_on, bytes_off):
+    byte_index, bit_index = find_bit_difference(bytes_on[7:-2], bytes_off[7:-2])
+    store_trigger_to_file(byte_index, bit_index)
+    print('Midi trigger saved')
 
 # Binding process
 # turn on
@@ -147,6 +167,20 @@ def handle_sysex(bytes):
         pass
     else:
         print(f'Unsupported sysex message {bytes}')
+
+
+def is_note_on(midi_bytes):
+    # Check if the list has at least 3 elements
+    if len(midi_bytes) < 3:
+        return False
+
+    # Check if the status byte indicates a Note On message (status byte starts with '1001' in binary)
+    if (midi_bytes[0] & 0xF0) == 0x90:
+        # Check if the velocity is greater than 0 (to distinguish Note On from Note Off)
+        if midi_bytes[2] > 0:
+            return True
+
+    return False
 
 
 def handle_midi_message(bytes):
