@@ -4,7 +4,7 @@ import uos
 from machine import Pin 
 
 #TODO handle ID when organ turns on ?
-
+# note: organ id might reset everytime its turned off/on
 
 # Initialize pins
 midi_uart = machine.UART(0, baudrate=31250, tx=Pin(0), rx=Pin(1))
@@ -32,7 +32,8 @@ zimbel_ready = False
 BUTTON_HOLD_TIME = 1000 # 3000
 BLINK_DURATION = 10000 # 30000 ?
 
-debounce_time = 250 # 50-250 ?
+DEBOUNCE_TIME = 250 # 50-250 ?
+YIELD_TIME = 1 # 0-10?
 
 midi_trigger_filename = 'midi_trigger.txt'
 midi_trigger_bytes = []
@@ -137,7 +138,6 @@ def bytes_match_trigger(input_bytes):
 
     for i in range(len(midi_trigger_bytes)):
         # save time by not checking empty bytes
-        # TODO: READY TO TEST
         if midi_trigger_bytes[i] == 0: continue
 
         midi_trigger_bits = bits(midi_trigger_bytes[i])
@@ -147,9 +147,7 @@ def bytes_match_trigger(input_bytes):
         print('input bits', input_bits)
 
         for j in range(8):
-            # print(midi_trigger_bits[j], input_bits[j])
-            # print(type(midi_trigger_bits[j]), type(1))
-
+            # not a match if our trigger bit is off when it should be on
             if int(midi_trigger_bits[j]) == 1 and int(input_bits[j]) == 0:
                 print('doesnt match trigger, returning false')
                 return False
@@ -195,7 +193,7 @@ async def read_midi_task():
                     change_mode(MODE_ZIMBEL)
         
         # Yield control to event loop
-        await asyncio.sleep_ms(1)
+        await asyncio.sleep_ms(YIELD_TIME)
 
 
 async def read_button_task():
@@ -212,7 +210,7 @@ async def read_button_task():
                 zimbel_off() if zimbel_state else zimbel_on()
                 
                 # Debounce after press
-                await asyncio.sleep_ms(debounce_time)
+                await asyncio.sleep_ms(DEBOUNCE_TIME)
             
             # Check if the button has been held for x number of ms
             if time.ticks_diff(time.ticks_ms(), button_clock) >= BUTTON_HOLD_TIME:
@@ -225,7 +223,7 @@ async def read_button_task():
                 button_state = False
         
         # Yield control to event loop
-        await asyncio.sleep_ms(1)
+        await asyncio.sleep_ms(YIELD_TIME)
 
 
 async def button_ready_task():
@@ -241,7 +239,7 @@ async def button_ready_task():
                 zimbel_ready_off() if zimbel_ready else zimbel_ready_on()
 
                 # Debounce after press
-                await asyncio.sleep_ms(debounce_time)
+                await asyncio.sleep_ms(DEBOUNCE_TIME)
             
         else:  # Button is not being pressed
             if button_ready_state:
@@ -249,7 +247,7 @@ async def button_ready_task():
                 button_ready_state = False
         
         # Yield control to event loop
-        await asyncio.sleep_ms(1)
+        await asyncio.sleep_ms(YIELD_TIME)
 
 
 async def main():
