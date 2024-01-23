@@ -195,7 +195,7 @@ async def read_midi_task():
                     change_mode(MODE_ZIMBEL)
         
         # Yield control to event loop
-        await asyncio.sleep_ms(10)
+        await asyncio.sleep_ms(1)
 
 
 async def read_button_task():
@@ -225,7 +225,7 @@ async def read_button_task():
                 button_state = False
         
         # Yield control to event loop
-        await asyncio.sleep_ms(10)
+        await asyncio.sleep_ms(1)
 
 
 async def button_ready_task():
@@ -249,7 +249,7 @@ async def button_ready_task():
                 button_ready_state = False
         
         # Yield control to event loop
-        await asyncio.sleep_ms(10)
+        await asyncio.sleep_ms(1)
 
 
 async def main():

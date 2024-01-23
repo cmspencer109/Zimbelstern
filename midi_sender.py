@@ -18,8 +18,11 @@ sysex_off = str_to_byte_list("F0 41 10 30 12 01 00 00 00 00 00 00 00 00 00 00 00
 print(f'Sending:  {sysex_msg}')
 uart.write(bytearray(sysex_msg))
 
-# print('Sleeping for 1 second')
-# time.sleep(1)
+print('Sleeping for 1 second')
+time.sleep(1)
 
-# print(f'Sending:  {sysex_off}')
-# uart.write(bytearray(sysex_off))
+uart.write(bytearray(str_to_byte_list("F0 41 10 30 12 01 00 00 01 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 7E F7")))
+time.sleep(1)
+
+print(f'Sending:  {sysex_off}')
+uart.write(bytearray(sysex_off))
