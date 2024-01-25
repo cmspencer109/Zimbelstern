@@ -41,12 +41,10 @@ midi_trigger_bytes = []
 # Setup
 # If the file already exists, save the contents to the trigger variables
 if midi_trigger_filename in uos.listdir():
-    with open(midi_trigger_filename, "rb") as file:
-        midi_trigger_on = file.readline().strip()
-        midi_trigger_off = file.readline().strip()
-        print('Loaded midi triggers')
-        print('midi_trigger_on:', midi_trigger_on)
-        print('midi_trigger_off:', midi_trigger_off)
+    with open(midi_trigger_filename, 'rb') as file:
+        midi_trigger_bytes = list(file.read())
+        print('Loaded midi trigger')
+        print(midi_trigger_bytes)
 
 
 def zimbel_on():
@@ -155,7 +153,7 @@ def bytes_match_trigger(input_bytes):
 
 
 async def read_midi_task():
-    global mode, zimbel_ready, midi_trigger_bytes
+    global mode, zimbel_ready, midi_trigger_bytes, midi_trigger_filename
 
     while True:
         if midi_uart.any():
@@ -187,8 +185,14 @@ async def read_midi_task():
                 # Filter out Active Sensing byte
                 if midi_bytes != [0xFE]:
                     print('Program mode only working with Rodgers SYSEX right now')
+
                     # save midi trigger
                     midi_trigger_bytes = midi_bytes[7:-2]
+
+                    # write to file
+                    with open(midi_trigger_filename, 'wb') as file:
+                        file.write(bytes(midi_trigger_bytes))
+                    
                     print('Saved midi trigger:', midi_trigger_bytes)
                     change_mode(MODE_ZIMBEL)
         
