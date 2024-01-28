@@ -38,6 +38,8 @@ YIELD_TIME = 1 # 0-10?
 midi_trigger_filename = 'midi_trigger.txt'
 midi_trigger_bytes = []
 
+stops_on = False
+
 # Setup
 # If the file already exists, save the contents to the trigger variables
 if midi_trigger_filename in uos.listdir():
@@ -152,8 +154,12 @@ def bytes_match_trigger(input_bytes):
     return True
 
 
+async def all_stops_off(input_bytes):
+    return all(byte == 0 for byte in input_bytes)
+
+
 async def read_midi_task():
-    global mode, zimbel_ready, midi_trigger_bytes, midi_trigger_filename
+    global mode, zimbel_ready, midi_trigger_bytes, midi_trigger_filename, stops_on
 
     while True:
         if midi_uart.any():
@@ -165,17 +171,25 @@ async def read_midi_task():
                 if midi_bytes == [0xFE]:
                     continue
                 print('Midi message:', midi_bytes)
+                print('Stops on:', stops_on)
                 
                 # Handle midi messages while in zimbel mode
                 # i.e. listen for midi trigger
+
+                # if sysex
                 if midi_bytes[0] == 0xF0: # testing sysex only for now
+                    if await all_stops_off(midi_bytes[7:-2]):
+                        stops_on = False
+                    else:
+                        stops_on = True
+
                     if bytes_match_trigger(midi_bytes[7:-2]):
                         zimbel_on()
                     else: # TODO: READY TO TEST
                         zimbel_off() 
 
                 # if zimbel ready and note on
-                if zimbel_ready and is_note_on(midi_bytes):
+                if zimbel_ready and stops_on and is_note_on(midi_bytes):
                     print('zimbel ready and note on')
                     zimbel_on()
 
