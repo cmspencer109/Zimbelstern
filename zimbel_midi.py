@@ -1,32 +1,34 @@
-import uasyncio as asyncio
-import utime as time
+import machine
+import uasyncio
+import utime
 import uos
-from machine import Pin 
+from machine import Pin
 
-#TODO handle ID when organ turns on ?
-# note: organ id might reset everytime its turned off/on
+# TODO: handle ID when organ turns on ?
+# organ id might reset every time its turned off/on
 
 # Initialize pins
 midi_uart = machine.UART(0, baudrate=31250, tx=Pin(0), rx=Pin(1))
-button = Pin(15, Pin.IN, Pin.PULL_UP)
-led = Pin(14, Pin.OUT)
 
-# button name ideas:
-# ready, queue, set, mark, prime, pre
-button_ready = Pin(13, Pin.IN, Pin.PULL_UP)
-led_ready = Pin(12, Pin.OUT)
+prepare_button = Pin(13, Pin.IN, Pin.PULL_UP)
+prepare_button_light = Pin(12, Pin.OUT)
+prepare_button_state = False
+
+zimbel_button = Pin(15, Pin.IN, Pin.PULL_UP)
+zimbel_button_light = Pin(14, Pin.OUT)
+zimbel_button_state = False
 
 # Modes
 MODE_ZIMBEL = "MODE_ZIMBEL"
 MODE_PROGRAM = "MODE_PROGRAM"
-mode = MODE_ZIMBEL
+current_mode = MODE_ZIMBEL
 
-button_state = False
+
 button_clock = -1
 zimbel_state = False
-led.value(zimbel_state)
+zimbel_button_light.value(zimbel_state)
 
-button_ready_state = False
+
 zimbel_ready = False
 
 BUTTON_HOLD_TIME = 1000 # 3000
@@ -53,7 +55,7 @@ def zimbel_on():
     global zimbel_state
     if not zimbel_state:
         zimbel_state = True
-        led.value(zimbel_state)
+        zimbel_button_light.value(zimbel_state)
         print('Zimbel on')
         zimbel_ready_off()
 
@@ -62,7 +64,7 @@ def zimbel_off():
     global zimbel_state
     if zimbel_state:
         zimbel_state = False
-        led.value(zimbel_state)
+        zimbel_button_light.value(zimbel_state)
         print('Zimbel off')
         zimbel_ready_off()
 
@@ -71,39 +73,39 @@ def zimbel_ready_on():
     zimbel_off()
     global zimbel_ready
     zimbel_ready = True
-    led_ready.value(zimbel_ready)
+    prepare_button_light.value(zimbel_ready)
     print('Zimbel ready on')
 
 
 def zimbel_ready_off():
     global zimbel_ready
     zimbel_ready = False
-    led_ready.value(zimbel_ready)
+    prepare_button_light.value(zimbel_ready)
     print('Zimbel ready off')
 
 
 def change_mode(new_mode):
-    global mode, midi_trigger_on_off
-    if mode != new_mode:
+    global current_mode, midi_trigger_on_off
+    if current_mode != new_mode:
         print('Mode changed to', new_mode)
-        mode = new_mode
-        if mode == MODE_PROGRAM:
+        current_mode = new_mode
+        if current_mode == MODE_PROGRAM:
             # Perform these actions when entering program mode
             zimbel_off()
             midi_trigger_on_off = []
 
 
 async def blink():
-    global mode
+    global current_mode
 
-    start_time = time.ticks_ms()
+    start_time = utime.ticks_ms()
 
     # Loop until duration has been reached or the mode changes of program mode
-    while time.ticks_diff(time.ticks_ms(), start_time) < BLINK_DURATION and mode == MODE_PROGRAM:
-        led.value(not led.value())
-        await asyncio.sleep_ms(200)
+    while utime.ticks_diff(utime.ticks_ms(), start_time) < BLINK_DURATION and current_mode == MODE_PROGRAM:
+        zimbel_button_light.value(not zimbel_button_light.value())
+        await uasyncio.sleep_ms(200)
     # End loop with led off
-    led.value(False)
+    zimbel_button_light.value(False)
     
     # Reset mode after completing loop
     change_mode(MODE_ZIMBEL)
@@ -158,15 +160,15 @@ async def all_stops_off(input_bytes):
     return all(byte == 0 for byte in input_bytes)
 
 
-async def read_midi_task():
-    global mode, zimbel_ready, midi_trigger_bytes, midi_trigger_filename, stops_on
+async def midi_loop():
+    global current_mode, zimbel_ready, midi_trigger_bytes, midi_trigger_filename, stops_on
 
     while True:
         if midi_uart.any():
             midi_bytes = list(midi_uart.read())
             
             # Handle midi data differently based on current mode
-            if mode == MODE_ZIMBEL:
+            if current_mode == MODE_ZIMBEL:
                 # Filter out Active Sensing byte
                 if midi_bytes == [0xFE]:
                     continue
@@ -193,7 +195,7 @@ async def read_midi_task():
                     print('zimbel ready and note on')
                     zimbel_on()
 
-            elif mode == MODE_PROGRAM:
+            elif current_mode == MODE_PROGRAM:
                 # Handle midi messages while in program mode
                 # i.e. listen for midi and assign to trigger
                 # Filter out Active Sensing byte
@@ -211,72 +213,69 @@ async def read_midi_task():
                     change_mode(MODE_ZIMBEL)
         
         # Yield control to event loop
-        await asyncio.sleep_ms(YIELD_TIME)
+        await uasyncio.sleep_ms(YIELD_TIME)
 
 
-async def read_button_task():
-    global button_state, button_clock, zimbel_state, mode
+async def zimbel_button_loop():
+    global zimbel_button_state, button_clock, zimbel_state, current_mode
 
     while True:
-        if button.value() == 0:  # Button is being pressed
-            if not button_state:
+        if zimbel_button.value() == 0:  # Button is being pressed
+            if not zimbel_button_state:
                 #print('Button pressed')
-                button_state = True
-                button_clock = time.ticks_ms()
+                zimbel_button_state = True
+                button_clock = utime.ticks_ms()
                 
                 # Toggle zimbel state
                 zimbel_off() if zimbel_state else zimbel_on()
                 
                 # Debounce after press
-                await asyncio.sleep_ms(DEBOUNCE_TIME)
+                await uasyncio.sleep_ms(DEBOUNCE_TIME)
             
             # Check if the button has been held for x number of ms
-            if time.ticks_diff(time.ticks_ms(), button_clock) >= BUTTON_HOLD_TIME:
+            if utime.ticks_diff(utime.ticks_ms(), button_clock) >= BUTTON_HOLD_TIME:
                 change_mode(MODE_PROGRAM)
                 await blink()
             
         else:  # Button is not being pressed
-            if button_state:
+            if zimbel_button_state:
                 #print('Button released')
-                button_state = False
+                zimbel_button_state = False
         
         # Yield control to event loop
-        await asyncio.sleep_ms(YIELD_TIME)
+        await uasyncio.sleep_ms(YIELD_TIME)
 
 
-async def button_ready_task():
-    global button_ready_state, zimbel_ready
+async def prepare_button_loop():
+    global prepare_button_state, zimbel_ready
 
     while True:
-        if button_ready.value() == 0:  # Button is being pressed
-            if not button_ready_state:
+        if prepare_button.value() == 0:  # Button is being pressed
+            if not prepare_button_state:
                 # print('READY pressed')
-                button_ready_state = True
+                prepare_button_state = True
                 
                 # Toggle zimbel ready state
                 zimbel_ready_off() if zimbel_ready else zimbel_ready_on()
 
                 # Debounce after press
-                await asyncio.sleep_ms(DEBOUNCE_TIME)
+                await uasyncio.sleep_ms(DEBOUNCE_TIME)
             
         else:  # Button is not being pressed
-            if button_ready_state:
+            if prepare_button_state:
                 # print('READY released')
-                button_ready_state = False
+                prepare_button_state = False
         
         # Yield control to event loop
-        await asyncio.sleep_ms(YIELD_TIME)
+        await uasyncio.sleep_ms(YIELD_TIME)
 
 
 async def main():
-    # Create task handlers
-    button_task_handler = asyncio.create_task(read_button_task())
-    midi_task_handler = asyncio.create_task(read_midi_task())
-    button_ready_task_handler = asyncio.create_task(button_ready_task())
-    #star_handler = #TODO ?
+    midi_loop_task = uasyncio.create_task(midi_loop())
+    zimbel_button_loop_task = uasyncio.create_task(zimbel_button_loop())
+    prepare_button_loop_task = uasyncio.create_task(prepare_button_loop())
 
-    # Run the event loop
-    await asyncio.gather(button_task_handler, midi_task_handler, button_ready_task_handler)
+    await uasyncio.gather(midi_loop_task, zimbel_button_loop_task, prepare_button_loop_task)
 
-# Run the main function to start the event loop
-asyncio.run(main())
+
+uasyncio.run(main())
