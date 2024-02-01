@@ -126,6 +126,36 @@ def is_note_on(midi_bytes):
     return False
 
 
+# Program change helper
+def is_program_change(message_bytes):
+    # Check if the message has at least three bytes
+    if len(message_bytes) < 3:
+        return False
+    
+    # Extract status byte and check if it is a Program Change message
+    status_byte = message_bytes[0]
+    if (status_byte & 0xF0) == 0xC0:  # Check if the most significant nibble is 1100 (Program Change)
+        return True
+    
+    return False
+
+
+# Sysex helper
+def is_sysex(message_bytes):
+    # Check if the message has at least two bytes
+    if len(message_bytes) < 2:
+        return False
+    
+    # Extract status bytes and check if it is the start or end of SysEx
+    start_byte = message_bytes[0]
+    end_byte = message_bytes[-1]
+    
+    if start_byte == 0xF0 and end_byte == 0xF7:
+        return True
+    
+    return False
+
+
 def bits(hex_number, total_width=8):
     binary_representation = bin(hex_number)[2:]
     return '0' * (total_width - len(binary_representation)) + binary_representation
@@ -178,8 +208,15 @@ async def midi_loop():
                 # Handle midi messages while in zimbel mode
                 # i.e. listen for midi trigger
 
+                # if program change
+                if is_program_change(midi_bytes):
+                    if bytes_match_trigger(midi_bytes):
+                        zimbel_on()
+                    else:
+                        zimbel_off() # TODO: test if this is needed
+
                 # if sysex
-                if midi_bytes[0] == 0xF0: # testing sysex only for now
+                if is_sysex(midi_bytes): # testing RODGERS sysex only for now
                     if await all_stops_off(midi_bytes[7:-2]):
                         stops_on = False
                     else:
@@ -187,8 +224,8 @@ async def midi_loop():
 
                     if bytes_match_trigger(midi_bytes[7:-2]):
                         zimbel_on()
-                    else: # TODO: READY TO TEST
-                        zimbel_off() 
+                    else:
+                        zimbel_off() # TODO: test if this is needed
 
                 # if zimbel ready and note on
                 if zimbel_ready and stops_on and is_note_on(midi_bytes):
@@ -200,6 +237,10 @@ async def midi_loop():
                 # i.e. listen for midi and assign to trigger
                 # Filter out Active Sensing byte
                 if midi_bytes != [0xFE]:
+                    
+                    if is_program_change(midi_bytes):
+                        midi_trigger_bytes = midi_bytes
+
                     print('Program mode only working with Rodgers SYSEX right now')
 
                     # save midi trigger
