@@ -18,6 +18,12 @@ zimbel_button = Pin(15, Pin.IN, Pin.PULL_UP)
 zimbel_button_light = Pin(14, Pin.OUT)
 zimbel_button_state = False
 
+# Adjustment dials
+volume_dial = machine.ADC(27)
+speed_dial = machine.ADC(26)
+volume = 0
+speed = 0
+
 # Modes
 MODE_ZIMBEL = "MODE_ZIMBEL"
 MODE_PROGRAM = "MODE_PROGRAM"
@@ -311,12 +317,53 @@ async def prepare_button_loop():
         await uasyncio.sleep_ms(YIELD_TIME)
 
 
+async def volume_dial_loop():
+    global volume, volume_dial
+    volume_pot_value = volume_dial.read_u16()
+    
+    # Reverse the mapping for pulse duration (e.g., 100 to 10 ms)
+    volume = int(((65535 - volume_pot_value) / 65535) * 90) + 10
+
+
+async def speed_dial_loop():
+    global speed, speed_dial
+    speed_pot_value = speed_dial.read_u16()
+
+    # Keep the mapping as it is for sleep duration (e.g., 1000 to 100 ms)
+    speed = int((speed_pot_value / 65535) * 900) + 100
+
+
+# Magnet Test
+async def magnet_loop():
+    global volume, speed
+    
+    ztx851_base = machine.Pin(16, machine.Pin.OUT)
+    onboard_led = machine.Pin(25, machine.Pin.OUT)
+
+    while zimbel_state:
+        ztx851_base.on()
+        onboard_led.on()
+
+        print(f'Pulse {volume} ms')
+        uasyncio.sleep_ms(volume)
+        
+        ztx851_base.off()
+        onboard_led.off()
+
+        print(f'Sleeping for {speed} ms')
+        uasyncio.sleep_ms(speed)
+
+
 async def main():
     midi_loop_task = uasyncio.create_task(midi_loop())
     zimbel_button_loop_task = uasyncio.create_task(zimbel_button_loop())
     prepare_button_loop_task = uasyncio.create_task(prepare_button_loop())
+    volume_dial_loop_task = uasyncio.create_task(volume_dial_loop())
+    speed_dial_loop_task = uasyncio.create_task(speed_dial_loop())
+    magnet_loop_task = uasyncio.create_task(magnet_loop())
 
-    await uasyncio.gather(midi_loop_task, zimbel_button_loop_task, prepare_button_loop_task)
+    await uasyncio.gather(midi_loop_task, zimbel_button_loop_task, prepare_button_loop_task, 
+                          volume_dial_loop_task, speed_dial_loop_task, magnet_loop_task)
 
 
 uasyncio.run(main())
