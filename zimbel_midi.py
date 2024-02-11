@@ -2,20 +2,21 @@ import machine
 import uasyncio
 import utime
 import uos
-from machine import Pin
 
 # TODO: handle ID when organ turns on ?
 # organ id might reset every time its turned off/on
 
-# Initialize pins
-midi_uart = machine.UART(0, baudrate=31250, tx=Pin(0), rx=Pin(1))
+star_uart = machine.UART(1, baudrate=9600, tx=machine.Pin(4))
 
-prepare_button = Pin(13, Pin.IN, Pin.PULL_UP)
-prepare_button_light = Pin(12, Pin.OUT)
+# Initialize pins
+midi_uart = machine.UART(0, baudrate=31250, tx=machine.Pin(0), rx=machine.Pin(1))
+
+prepare_button = machine.Pin(13, machine.Pin.IN, machine.Pin.PULL_UP)
+prepare_button_light = machine.Pin(12, machine.Pin.OUT)
 prepare_button_state = False
 
-zimbel_button = Pin(15, Pin.IN, Pin.PULL_UP)
-zimbel_button_light = Pin(14, Pin.OUT)
+zimbel_button = machine.Pin(15, machine.Pin.IN, machine.Pin.PULL_UP)
+zimbel_button_light = machine.Pin(14, machine.Pin.OUT)
 zimbel_button_state = False
 
 # Adjustment dials
@@ -58,21 +59,25 @@ if midi_trigger_filename in uos.listdir():
 
 
 def zimbel_on():
-    global zimbel_state
+    global zimbel_state, star_uart
     if not zimbel_state:
         zimbel_state = True
         zimbel_button_light.value(zimbel_state)
         print('Zimbel on')
         zimbel_ready_off()
+        star_uart.write(b'\xFF')
+        print('Sent 0xff')
 
 
 def zimbel_off():
-    global zimbel_state
+    global zimbel_state, star_uart
     if zimbel_state:
         zimbel_state = False
         zimbel_button_light.value(zimbel_state)
         print('Zimbel off')
         zimbel_ready_off()
+        star_uart.write(b'\x00')
+        print('Sent 0x00')
 
 
 def zimbel_ready_on():
@@ -323,6 +328,7 @@ async def volume_dial_loop():
     
     # Reverse the mapping for pulse duration (e.g., 100 to 10 ms)
     volume = int(((65535 - volume_pot_value) / 65535) * 90) + 10
+    print(f'Volume {volume}')
 
 
 async def speed_dial_loop():
@@ -331,6 +337,7 @@ async def speed_dial_loop():
 
     # Keep the mapping as it is for sleep duration (e.g., 1000 to 100 ms)
     speed = int((speed_pot_value / 65535) * 900) + 100
+    print(f'Speed {speed}')
 
 
 # Magnet Test
