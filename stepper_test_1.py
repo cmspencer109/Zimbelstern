@@ -1,30 +1,29 @@
-import machine
-import utime
+from machine import Pin
+import time
 
-STEP_PIN = machine.Pin(16, machine.Pin.OUT)
-DIR_PIN = machine.Pin(17, machine.Pin.OUT)
-EN_PIN = machine.Pin(18, machine.Pin.OUT)
-onboard_led = machine.Pin(25, machine.Pin.OUT)
+# Define the GPIO pins
+dir_pin = Pin(16, Pin.OUT)
+step_pin = Pin(17, Pin.OUT)
+enable_pin = Pin(18, Pin.OUT)
 
-# Set initial direction and step values
-EN_PIN.value(0)
-DIR_PIN.value(1)
-onboard_led.value(0)
+# Set the initial direction and enable the motor
+dir_pin.value(1)  # Set direction (1 or 0 depending on the motor orientation)
+enable_pin.value(0)  # Enable the motor
 
-# Define function to step the motor
+# Function to step the motor
 def step_motor(steps, delay):
-    onboard_led.value(1)
     for _ in range(steps):
-        STEP_PIN.value(1)
-        utime.sleep_us(delay)
-        STEP_PIN.value(0)
-        utime.sleep_us(delay)
-    onboard_led.value(0)
+        step_pin.value(1)
+        time.sleep_us(delay)
+        step_pin.value(0)
+        time.sleep_us(delay)
 
-# Example: Rotate the motor 200 steps with a delay of 1000 microseconds between steps
-# step_motor(100*(200*5.1818), 500)
-step_motor(100*(1600*5.1818), 100)
+# Number of steps and delay for each step (adjust as needed)
+num_steps = 1*5.187*1600
+step_delay = 100  # in microseconds
 
-# Turn off the motor and onboard LED
-STEP_PIN.value(0)
-onboard_led.value(0)
+# Rotate the motor
+step_motor(num_steps, step_delay)
+
+# Disable the motor
+enable_pin.value(1)
