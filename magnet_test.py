@@ -44,7 +44,7 @@ def pulse_and_flash():
     # Flash the onboard LED
     onboard_led.on()
     
-    pulse_duration = get_pulse_duration()
+    pulse_duration = 50#get_pulse_duration()
 
     print(f'Pulse {pulse_duration} ms')
     
@@ -57,6 +57,6 @@ def pulse_and_flash():
 # Main loop
 while True:
     pulse_and_flash()
-    sleep_duration = get_sleep_duration()
+    sleep_duration = 1000#get_sleep_duration()
     print('Sleeping for:', sleep_duration)
     time.sleep_ms(sleep_duration)  # Adjust the sleep duration based on the second potentiometer

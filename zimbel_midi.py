@@ -58,15 +58,16 @@ if midi_trigger_filename in uos.listdir():
         print(midi_trigger_bytes)
 
 
-def zimbel_on():
+async def zimbel_on():
     global zimbel_state, star_uart
     if not zimbel_state:
         zimbel_state = True
-        zimbel_button_light.value(zimbel_state)
-        print('Zimbel on')
         zimbel_ready_off()
+        zimbel_button_light.value(zimbel_state)
+        await magnet_loop()
         star_uart.write(b'\xFF')
-        print('Sent 0xff')
+        print('Sent 0xff to star uart')
+        print('Zimbel on')
 
 
 def zimbel_off():
@@ -222,7 +223,7 @@ async def midi_loop():
                 # if program change
                 if is_program_change(midi_bytes):
                     if bytes_match_trigger(midi_bytes):
-                        zimbel_on()
+                        await zimbel_on()
                     else:
                         zimbel_off() # TODO: test if this is needed
 
@@ -234,14 +235,14 @@ async def midi_loop():
                         stops_on = True
 
                     if bytes_match_trigger(midi_bytes[7:-2]):
-                        zimbel_on()
+                        await zimbel_on()
                     else:
                         zimbel_off() # TODO: test if this is needed
 
                 # if zimbel ready and note on
                 if zimbel_ready and stops_on and is_note_on(midi_bytes):
                     print('zimbel ready and note on')
-                    zimbel_on()
+                    await zimbel_on()
 
             elif current_mode == MODE_PROGRAM:
                 # Handle midi messages while in program mode
@@ -279,7 +280,7 @@ async def zimbel_button_loop():
                 button_clock = utime.ticks_ms()
                 
                 # Toggle zimbel state
-                zimbel_off() if zimbel_state else zimbel_on()
+                zimbel_off() if zimbel_state else await zimbel_on()
                 
                 # Debounce after press
                 await uasyncio.sleep_ms(DEBOUNCE_TIME)
@@ -342,7 +343,8 @@ async def speed_dial_loop():
 
 # Magnet Test
 async def magnet_loop():
-    global volume, speed
+    global zimbel_state
+    # global volume, speed
     
     ztx851_base = machine.Pin(16, machine.Pin.OUT)
     onboard_led = machine.Pin(25, machine.Pin.OUT)
@@ -351,14 +353,18 @@ async def magnet_loop():
         ztx851_base.on()
         onboard_led.on()
 
-        print(f'Pulse {volume} ms')
-        uasyncio.sleep_ms(volume)
+        # print(f'Pulse {volume} ms')
+        # uasyncio.sleep_ms(volume)
+        print('Pulsing for 50ms')
+        await uasyncio.sleep_ms(50)
         
         ztx851_base.off()
         onboard_led.off()
 
-        print(f'Sleeping for {speed} ms')
-        uasyncio.sleep_ms(speed)
+        # print(f'Sleeping for {speed} ms')
+        # uasyncio.sleep_ms(speed)
+        print('Sleeping for 1s')
+        await uasyncio.sleep_ms(1000)
 
 
 async def main():
