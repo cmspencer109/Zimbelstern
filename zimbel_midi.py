@@ -1,22 +1,40 @@
 import machine
 import uasyncio
-import utime
 import uos
+import utime
+from machine import Pin
+
+BELLS_ENABLED = False
+
+# TODO: add support for general cancel
+
+onboard_led = Pin(25, Pin.OUT)
+
+# Bells:
+# D7, F7, G7, A7, C8
+
+D = Pin(16, Pin.OUT)
+F = Pin(17, Pin.OUT)
+G = Pin(18, Pin.OUT)
+A = Pin(19, Pin.OUT)
+C = Pin(20, Pin.OUT)
+
+BELL_SEQUENCE = [D,F,G,A,C]
 
 # TODO: handle ID when organ turns on ?
 # organ id might reset every time its turned off/on
 
-star_uart = machine.UART(1, baudrate=9600, tx=machine.Pin(4))
+star_uart = machine.UART(1, baudrate=9600, tx=Pin(4))
 
 # Initialize pins
-midi_uart = machine.UART(0, baudrate=31250, tx=machine.Pin(0), rx=machine.Pin(1))
+midi_uart = machine.UART(0, baudrate=31250, tx=Pin(0), rx=Pin(1))
 
-prepare_button = machine.Pin(13, machine.Pin.IN, machine.Pin.PULL_UP)
-prepare_button_light = machine.Pin(12, machine.Pin.OUT)
+prepare_button = Pin(13, Pin.IN, Pin.PULL_UP)
+prepare_button_light = Pin(12, Pin.OUT)
 prepare_button_state = False
 
-zimbel_button = machine.Pin(15, machine.Pin.IN, machine.Pin.PULL_UP)
-zimbel_button_light = machine.Pin(14, machine.Pin.OUT)
+zimbel_button = Pin(15, Pin.IN, Pin.PULL_UP)
+zimbel_button_light = Pin(14, Pin.OUT)
 zimbel_button_state = False
 
 # Adjustment dials
@@ -59,26 +77,23 @@ if midi_trigger_filename in uos.listdir():
 
 
 async def zimbel_on():
-    global zimbel_state, star_uart
+    global zimbel_state
     if not zimbel_state:
         zimbel_state = True
+        print('Zimbel on')
         zimbel_ready_off()
         zimbel_button_light.value(zimbel_state)
-        await magnet_loop()
-        star_uart.write(b'\xFF')
-        print('Sent 0xff to star uart')
-        print('Zimbel on')
+        await bell_loop()
+        await star_loop()
 
 
 def zimbel_off():
-    global zimbel_state, star_uart
+    global zimbel_state
     if zimbel_state:
         zimbel_state = False
-        zimbel_button_light.value(zimbel_state)
         print('Zimbel off')
+        zimbel_button_light.value(zimbel_state)
         zimbel_ready_off()
-        star_uart.write(b'\x00')
-        print('Sent 0x00')
 
 
 def zimbel_ready_on():
@@ -341,16 +356,12 @@ async def speed_dial_loop():
     print(f'Speed {speed}')
 
 
-# Magnet Test
-async def magnet_loop():
-    global zimbel_state
+async def bell_loop():
+    global zimbel_state, BELLS_ENABLED, onboard_led, D
     # global volume, speed
-    
-    ztx851_base = machine.Pin(16, machine.Pin.OUT)
-    onboard_led = machine.Pin(25, machine.Pin.OUT)
 
-    while zimbel_state:
-        ztx851_base.on()
+    while zimbel_state and BELLS_ENABLED:
+        D.on()
         onboard_led.on()
 
         # print(f'Pulse {volume} ms')
@@ -358,7 +369,7 @@ async def magnet_loop():
         print('Pulsing for 50ms')
         await uasyncio.sleep_ms(50)
         
-        ztx851_base.off()
+        D.off()
         onboard_led.off()
 
         # print(f'Sleeping for {speed} ms')
@@ -367,16 +378,25 @@ async def magnet_loop():
         await uasyncio.sleep_ms(1000)
 
 
+async def star_loop():
+    global zimbel_state, star_uart
+    
+    while zimbel_state:
+        star_byte = b'\xFF'
+        star_uart.write(star_byte)
+        print(f'Sent {star_byte} to star uart')
+        await uasyncio.sleep_ms(100)
+
+
 async def main():
     midi_loop_task = uasyncio.create_task(midi_loop())
     zimbel_button_loop_task = uasyncio.create_task(zimbel_button_loop())
     prepare_button_loop_task = uasyncio.create_task(prepare_button_loop())
     volume_dial_loop_task = uasyncio.create_task(volume_dial_loop())
     speed_dial_loop_task = uasyncio.create_task(speed_dial_loop())
-    magnet_loop_task = uasyncio.create_task(magnet_loop())
 
     await uasyncio.gather(midi_loop_task, zimbel_button_loop_task, prepare_button_loop_task, 
-                          volume_dial_loop_task, speed_dial_loop_task, magnet_loop_task)
+                          volume_dial_loop_task, speed_dial_loop_task)
 
 
 uasyncio.run(main())
