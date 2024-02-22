@@ -24,7 +24,7 @@ Examples:
 #define STEP_PIN 4
 
 const int MIN_SPEED = 1000;
-const int MAX_SPEED = 5000;
+const int MAX_SPEED = 4000;
 const int ACCELERATION = 500;
 
 const int STEPS_IN_ONE_REVOLUTION = 8300; // 1600 steps * 5.187:1 gearbox ratio

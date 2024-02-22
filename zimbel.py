@@ -103,7 +103,7 @@ async def zimbel_on():
         zimbel_button_lamp.value(zimbel_state)
         print('Zimbel on')
         zimbel_ready_off()
-        await bell_loop()
+        # await bell_loop()
         await star_loop()
 
 
