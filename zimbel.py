@@ -4,42 +4,74 @@ import uos
 import utime
 from machine import Pin
 
-BELLS_ENABLED = False
+# TODO: Test Prepare button BEFORE stops engaged
 
 # TODO: add support for general cancel
 
-onboard_led = Pin(25, Pin.OUT)
-
-# Bells:
-# D7, F7, G7, A7, C8
-
-D = Pin(16, Pin.OUT)
-F = Pin(17, Pin.OUT)
-G = Pin(18, Pin.OUT)
-A = Pin(19, Pin.OUT)
-C = Pin(20, Pin.OUT)
-
-BELL_SEQUENCE = [D,F,G,A,C]
-
 # TODO: handle ID when organ turns on ?
 # organ id might reset every time its turned off/on
+# maybe use whatever midi messages the organ sends when it turns on to reset the binding?
 
-star_uart = machine.UART(1, baudrate=9600, tx=Pin(4))
+# Define pins
+PICO_LED_PIN = 25
 
-# Initialize pins
-midi_uart = machine.UART(0, baudrate=31250, tx=Pin(0), rx=Pin(1))
+BELL_D7_PIN = 16
+BELL_F7_PIN = 17
+BELL_G7_PIN = 18
+BELL_A7_PIN = 19
+BELL_C8_PIN = 20
 
-prepare_button = Pin(13, Pin.IN, Pin.PULL_UP)
-prepare_button_light = Pin(12, Pin.OUT)
+MIDI_UART_TX_PIN = 0
+MIDI_UART_RX_PIN = 1
+STAR_UART_TX_PIN = 4
+
+PREPARE_BUTTON_PIN = 13
+PREPARE_BUTTON_LAMP_PIN = 12
+
+ZIMBEL_BUTTON_PIN = 15
+ZIMBEL_BUTTON_LAMP_PIN = 14
+
+VOLUME_POT_PIN = 27
+SPEED_POT_PIN = 26
+
+BELLS_ENABLED = False
+
+
+pico_led = Pin(PICO_LED_PIN, Pin.OUT)
+
+bell_d7 = Pin(BELL_D7_PIN, Pin.OUT)
+bell_f7 = Pin(BELL_F7_PIN, Pin.OUT)
+bell_g7 = Pin(BELL_G7_PIN, Pin.OUT)
+bell_a7 = Pin(BELL_A7_PIN, Pin.OUT)
+bell_c8 = Pin(BELL_C8_PIN, Pin.OUT)
+
+BELL_SEQUENCE = [
+    bell_d7,
+    bell_f7,
+    bell_g7,
+    bell_a7,
+    bell_c8
+]
+
+BUTTON_HOLD_TIME_SECONDS = 1
+BLINK_DURATION_SECONDS = 10
+
+DEBOUNCE_TIME = 250 # 50-250 ?
+YIELD_TIME = 1 # 0-10?
+
+midi_uart = machine.UART(0, baudrate=31250, tx=Pin(MIDI_UART_TX_PIN), rx=Pin(MIDI_UART_RX_PIN))
+star_uart = machine.UART(1, baudrate=9600, tx=Pin(STAR_UART_TX_PIN))
+
+prepare_button = Pin(PREPARE_BUTTON_PIN, Pin.IN, Pin.PULL_UP)
+prepare_button_lamp = Pin(PREPARE_BUTTON_LAMP_PIN, Pin.OUT)
 prepare_button_state = False
 
-zimbel_button = Pin(15, Pin.IN, Pin.PULL_UP)
-zimbel_button_light = Pin(14, Pin.OUT)
+zimbel_button = Pin(ZIMBEL_BUTTON_PIN, Pin.IN, Pin.PULL_UP)
+zimbel_button_lamp = Pin(ZIMBEL_BUTTON_LAMP_PIN, Pin.OUT)
 zimbel_button_state = False
 
-# Adjustment dials
-volume_dial = machine.ADC(27)
-speed_dial = machine.ADC(26)
+volume_pot = machine.ADC(VOLUME_POT_PIN)
+speed_pot = machine.ADC(SPEED_POT_PIN)
 volume = 0
 speed = 0
 
@@ -51,16 +83,12 @@ current_mode = MODE_ZIMBEL
 
 button_clock = -1
 zimbel_state = False
-zimbel_button_light.value(zimbel_state)
+zimbel_button_lamp.value(zimbel_state)
 
 
 zimbel_ready = False
 
-BUTTON_HOLD_TIME = 1000 # 3000
-BLINK_DURATION = 10000 # 30000 ?
 
-DEBOUNCE_TIME = 250 # 50-250 ?
-YIELD_TIME = 1 # 0-10?
 
 midi_trigger_filename = 'midi_trigger.txt'
 midi_trigger_bytes = []
@@ -82,7 +110,7 @@ async def zimbel_on():
         zimbel_state = True
         print('Zimbel on')
         zimbel_ready_off()
-        zimbel_button_light.value(zimbel_state)
+        zimbel_button_lamp.value(zimbel_state)
         await bell_loop()
         await star_loop()
 
@@ -92,7 +120,7 @@ def zimbel_off():
     if zimbel_state:
         zimbel_state = False
         print('Zimbel off')
-        zimbel_button_light.value(zimbel_state)
+        zimbel_button_lamp.value(zimbel_state)
         zimbel_ready_off()
 
 
@@ -100,14 +128,14 @@ def zimbel_ready_on():
     zimbel_off()
     global zimbel_ready
     zimbel_ready = True
-    prepare_button_light.value(zimbel_ready)
+    prepare_button_lamp.value(zimbel_ready)
     print('Zimbel ready on')
 
 
 def zimbel_ready_off():
     global zimbel_ready
     zimbel_ready = False
-    prepare_button_light.value(zimbel_ready)
+    prepare_button_lamp.value(zimbel_ready)
     print('Zimbel ready off')
 
 
@@ -128,11 +156,11 @@ async def blink():
     start_time = utime.ticks_ms()
 
     # Loop until duration has been reached or the mode changes of program mode
-    while utime.ticks_diff(utime.ticks_ms(), start_time) < BLINK_DURATION and current_mode == MODE_PROGRAM:
-        zimbel_button_light.value(not zimbel_button_light.value())
+    while utime.ticks_diff(utime.ticks_ms(), start_time) < BLINK_DURATION_SECONDS and current_mode == MODE_PROGRAM:
+        zimbel_button_lamp.value(not zimbel_button_lamp.value())
         await uasyncio.sleep_ms(200)
     # End loop with led off
-    zimbel_button_light.value(False)
+    zimbel_button_lamp.value(False)
     
     # Reset mode after completing loop
     change_mode(MODE_ZIMBEL)
@@ -301,7 +329,7 @@ async def zimbel_button_loop():
                 await uasyncio.sleep_ms(DEBOUNCE_TIME)
             
             # Check if the button has been held for x number of ms
-            if utime.ticks_diff(utime.ticks_ms(), button_clock) >= BUTTON_HOLD_TIME:
+            if utime.ticks_diff(utime.ticks(), button_clock) >= BUTTON_HOLD_TIME_SECONDS:
                 change_mode(MODE_PROGRAM)
                 await blink()
             
@@ -339,8 +367,8 @@ async def prepare_button_loop():
 
 
 async def volume_dial_loop():
-    global volume, volume_dial
-    volume_pot_value = volume_dial.read_u16()
+    global volume, volume_pot
+    volume_pot_value = volume_pot.read_u16()
     
     # Reverse the mapping for pulse duration (e.g., 100 to 10 ms)
     volume = int(((65535 - volume_pot_value) / 65535) * 90) + 10
@@ -348,8 +376,8 @@ async def volume_dial_loop():
 
 
 async def speed_dial_loop():
-    global speed, speed_dial
-    speed_pot_value = speed_dial.read_u16()
+    global speed, speed_pot
+    speed_pot_value = speed_pot.read_u16()
 
     # Keep the mapping as it is for sleep duration (e.g., 1000 to 100 ms)
     speed = int((speed_pot_value / 65535) * 900) + 100
@@ -357,20 +385,20 @@ async def speed_dial_loop():
 
 
 async def bell_loop():
-    global zimbel_state, BELLS_ENABLED, onboard_led, D
+    global zimbel_state, BELLS_ENABLED, pico_led, bell_d7
     # global volume, speed
 
     while zimbel_state and BELLS_ENABLED:
-        D.on()
-        onboard_led.on()
+        bell_d7.on()
+        pico_led.on()
 
         # print(f'Pulse {volume} ms')
         # uasyncio.sleep_ms(volume)
         print('Pulsing for 50ms')
         await uasyncio.sleep_ms(50)
         
-        D.off()
-        onboard_led.off()
+        bell_d7.off()
+        pico_led.off()
 
         # print(f'Sleeping for {speed} ms')
         # uasyncio.sleep_ms(speed)
