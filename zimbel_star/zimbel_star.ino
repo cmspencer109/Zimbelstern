@@ -20,8 +20,8 @@ Examples:
 
 // Define pins
 #define ENABLE_PIN 2
-#define DIRECTION_PIN 3
-#define STEP_PIN 4
+#define STEP_PIN 3
+#define DIRECTION_PIN 4
 
 const int MIN_SPEED = 1000;
 const int MAX_SPEED = 4000;

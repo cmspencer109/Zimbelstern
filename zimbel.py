@@ -16,56 +16,54 @@ from ucollections import namedtuple
 # DEBUGGING = True
 
 
-BELLS_ENABLED = False
+BELLS_ENABLED = True
 
 pico_led = Pin(25, Pin.OUT)
 
-bell_d7 = Pin(16, Pin.OUT)
-bell_f7 = Pin(17, Pin.OUT)
-bell_g7 = Pin(18, Pin.OUT)
-bell_a7 = Pin(19, Pin.OUT)
-bell_c8 = Pin(20, Pin.OUT)
+bell_d7 = Pin(11, Pin.OUT)
+bell_f7 = Pin(10, Pin.OUT)
+bell_g7 = Pin(9, Pin.OUT)
+bell_a7 = Pin(8, Pin.OUT)
+bell_c8 = Pin(7, Pin.OUT)
 
 BellNote = namedtuple('BellNote', ['bell', 'volume'])
 
-BELL_SEQUENCE = [
-    [BellNote(bell=bell_d7, volume=1)],
-    [BellNote(bell=bell_f7, volume=1)],
-    [BellNote(bell=bell_g7, volume=1)],
-    [BellNote(bell=bell_a7, volume=1)],
-    [BellNote(bell=bell_c8, volume=1)]
-]
+# BELL_SEQUENCE = [
+#     [BellNote(bell=bell_d7, volume=1)],
+#     [BellNote(bell=bell_f7, volume=1)],
+#     [BellNote(bell=bell_g7, volume=1)],
+#     [BellNote(bell=bell_a7, volume=1)],
+#     [BellNote(bell=bell_c8, volume=1)]
+# ]
+
+# BELL_SEQUENCE = [
+#     [BellNote(bell=bell_d7, volume=1), BellNote(bell=bell_f7, volume=0.5)],
+#     [BellNote(bell=bell_a7, volume=1), BellNote(bell=bell_c8, volume=0.5)]
+# ]
 
 BELL_SEQUENCE = [
-    [BellNote(bell=bell_d7, volume=1), BellNote(bell=bell_f7, volume=0.5)],
-    [BellNote(bell=bell_a7, volume=1), BellNote(bell=bell_c8, volume=0.5)]
+    [BellNote(bell=bell_d7, volume=10)]
 ]
 
-BELL_SEQUENCE = [
-    [BellNote(bell=bell_d7, volume=1)]
-]
-
-BUTTON_HOLD_TIME = 1000
+BUTTON_HOLD_TIME = 3000
 BLINK_DURATION = 10000
 
-DEBOUNCE_TIME = 250 # 50-250 ?
+DEBOUNCE_TIME = 100 # 50-250 ?
 YIELD_TIME = 1 # 0-10?
 
 midi_uart = UART(0, baudrate=31250, tx=Pin(0), rx=Pin(1))
 star_uart = UART(1, baudrate=9600, tx=Pin(4))
 
 prepare_button = Pin(13, Pin.IN, Pin.PULL_UP)
-prepare_button_lamp = Pin(12, Pin.OUT)
+prepare_button_lamp = Pin(14, Pin.OUT)
 prepare_button_state = False
 
-zimbel_button = Pin(15, Pin.IN, Pin.PULL_UP)
-zimbel_button_lamp = Pin(14, Pin.OUT)
+zimbel_button = Pin(12, Pin.IN, Pin.PULL_UP)
+zimbel_button_lamp = Pin(15, Pin.OUT)
 zimbel_button_state = False
 
-volume_pot = ADC(27)
-speed_pot = ADC(26)
+volume_pot = ADC(26)
 volume = 0
-speed = 0
 
 # Modes
 ZIMBEL_MODE = "ZIMBEL_MODE"
@@ -87,6 +85,8 @@ midi_trigger_bytes = []
 
 stops_on = False
 
+zimbel_button_blinking = False
+
 # Setup
 # If the file already exists, save the contents to the trigger variables
 if midi_trigger_filename in uos.listdir():
@@ -96,15 +96,14 @@ if midi_trigger_filename in uos.listdir():
         print(midi_trigger_bytes)
 
 
-async def zimbel_on():
-    global zimbel_state
-    if not zimbel_state:
+def zimbel_on():
+    global zimbel_state, current_mode
+    if not zimbel_state and current_mode == 'ZIMBEL_MODE':
         zimbel_state = True
         zimbel_button_lamp.value(zimbel_state)
         print('Zimbel on')
         zimbel_ready_off()
-        # await bell_loop()
-        await star_loop()
+        # await bell_loop() # TODO move to top level task
 
 
 def zimbel_off():
@@ -142,19 +141,23 @@ def change_mode(new_mode):
 
 
 async def blink():
-    global current_mode
+    global current_mode, zimbel_button_blinking
+    if not zimbel_button_blinking:
+        zimbel_button_blinking = True
+        print('blink called')
 
-    start_time = utime.ticks_ms()
+        start_time = utime.ticks_ms()
 
-    # Loop until duration has been reached or the mode changes of program mode
-    while utime.ticks_diff(utime.ticks_ms(), start_time) < BLINK_DURATION and current_mode == PROGRAM_MODE:
-        zimbel_button_lamp.value(not zimbel_button_lamp.value())
-        await uasyncio.sleep_ms(200)
-    # End loop with led off
-    zimbel_button_lamp.value(False)
-    
-    # Reset mode after completing loop
-    change_mode(ZIMBEL_MODE)
+        # Loop until duration has been reached or the mode changes of program mode
+        while utime.ticks_diff(utime.ticks_ms(), start_time) < BLINK_DURATION and current_mode == PROGRAM_MODE:
+            zimbel_button_lamp.value(not zimbel_button_lamp.value())
+            await uasyncio.sleep_ms(200)
+        # End loop with led off
+        zimbel_button_lamp.value(False)
+        
+        # Reset mode after completing loop
+        change_mode(ZIMBEL_MODE)
+        zimbel_button_blinking = False
 
 
 # Note on helper
@@ -257,7 +260,7 @@ async def midi_loop():
                 # if program change
                 if is_program_change(midi_bytes):
                     if bytes_match_trigger(midi_bytes):
-                        await zimbel_on()
+                        zimbel_on()
                     else:
                         zimbel_off() # TODO: test if this is needed
 
@@ -269,14 +272,14 @@ async def midi_loop():
                         stops_on = True
 
                     if bytes_match_trigger(midi_bytes[7:-2]):
-                        await zimbel_on()
+                        zimbel_on()
                     else:
                         zimbel_off() # TODO: test if this is needed
 
                 # if zimbel ready and note on
                 if zimbel_ready and stops_on and is_note_on(midi_bytes):
                     print('zimbel ready and note on')
-                    await zimbel_on()
+                    zimbel_on()
 
             elif current_mode == PROGRAM_MODE:
                 # Handle midi messages while in program mode
@@ -314,7 +317,10 @@ async def zimbel_button_loop():
                 button_clock = utime.ticks_ms()
                 
                 # Toggle zimbel state
-                zimbel_off() if zimbel_state else await zimbel_on()
+                if zimbel_state:
+                    zimbel_off()
+                else:
+                    zimbel_on()
                 
                 # Debounce after press
                 await uasyncio.sleep_ms(DEBOUNCE_TIME)
@@ -343,7 +349,10 @@ async def prepare_button_loop():
                 prepare_button_state = True
                 
                 # Toggle zimbel ready state
-                zimbel_ready_off() if zimbel_ready else zimbel_ready_on()
+                if zimbel_ready:
+                    zimbel_ready_off()
+                else:
+                    zimbel_ready_on()
 
                 # Debounce after press
                 await uasyncio.sleep_ms(DEBOUNCE_TIME)
@@ -359,20 +368,16 @@ async def prepare_button_loop():
 
 async def volume_pot_loop():
     global volume, volume_pot
-    volume_pot_value = volume_pot.read_u16()
-    
-    # Reverse the mapping for pulse duration (e.g., 100 to 10 ms)
-    volume = int(((65535 - volume_pot_value) / 65535) * 90) + 10
-    print(f'Volume {volume}')
 
+    while True:
+        volume_pot_value = volume_pot.read_u16()
+        
+        # Reverse the mapping for pulse duration (e.g., 100 to 10 ms)
+        volume = int(((65535 - volume_pot_value) / 65535) * 90) + 10
+        print(f'Volume {volume_pot_value}')
 
-async def speed_pot_loop():
-    global speed, speed_pot
-    speed_pot_value = speed_pot.read_u16()
-
-    # Keep the mapping as it is for sleep duration (e.g., 1000 to 100 ms)
-    speed = int((speed_pot_value / 65535) * 900) + 100
-    print(f'Speed {speed}')
+        # Yield control to event loop
+        await uasyncio.sleep_ms(YIELD_TIME)
 
 
 async def bell_loop():
@@ -381,19 +386,20 @@ async def bell_loop():
     while zimbel_state and BELLS_ENABLED:
         for chord in BELL_SEQUENCE:
             for note in chord:
+                print(f'Playing {note}')
                 await play_bell_note(*note)
-        print('Sleeping for 1s')
-        await uasyncio.sleep_ms(1000)
+            print('Sleeping for 1s')
+            await uasyncio.sleep_ms(1000)
 
 
-async def play_bell_note(bell, volume):
-    global pico_led
+async def play_bell_note(bell, volume_factor):
+    global pico_led, volume
 
     bell.on()
     pico_led.on()
 
-    print('Pulsing for 50ms')
-    await uasyncio.sleep_ms(50*volume)
+    print(f'Pulsing for {volume*volume_factor}ms')
+    await uasyncio.sleep_ms(volume*volume_factor)
     
     bell.off()
     pico_led.off()
@@ -402,11 +408,15 @@ async def play_bell_note(bell, volume):
 async def star_loop():
     global zimbel_state, star_uart
     
-    while zimbel_state:
-        star_byte = b'\xFF'
-        star_uart.write(star_byte)
-        print(f'Sent {star_byte} to star uart')
-        await uasyncio.sleep_ms(100)
+    while True:
+        if zimbel_state:
+            star_byte = b'\xFF'
+            star_uart.write(star_byte)
+            print(f'Sent {star_byte} to star uart')
+            await uasyncio.sleep_ms(100)
+        
+        # Yield control to event loop
+        await uasyncio.sleep_ms(YIELD_TIME)
 
 
 async def main():
@@ -414,10 +424,10 @@ async def main():
     zimbel_button_loop_task = uasyncio.create_task(zimbel_button_loop())
     prepare_button_loop_task = uasyncio.create_task(prepare_button_loop())
     volume_pot_loop_task = uasyncio.create_task(volume_pot_loop())
-    speed_pot_loop_task = uasyncio.create_task(speed_pot_loop())
+    star_loop_task = uasyncio.create_task(star_loop())
 
     await uasyncio.gather(midi_loop_task, zimbel_button_loop_task, prepare_button_loop_task, 
-                          volume_pot_loop_task, speed_pot_loop_task)
+                          volume_pot_loop_task, star_loop_task)
 
 
 uasyncio.run(main())
