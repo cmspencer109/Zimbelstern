@@ -76,6 +76,7 @@ zimbel_state = False
 zimbel_button_lamp.value(zimbel_state)
 
 
+# TODO consider renaming to compliment prepare button name, e.g. zimbel_is_prepared
 zimbel_ready = False
 
 
@@ -205,7 +206,7 @@ def is_sysex(message_bytes):
     return False
 
 
-def bits(hex_number, total_width=8):
+def hex_to_bits(hex_number, total_width=8):
     binary_representation = bin(hex_number)[2:]
     return '0' * (total_width - len(binary_representation)) + binary_representation
 
@@ -221,8 +222,8 @@ def bytes_match_trigger(input_bytes):
         # save time by not checking empty bytes
         if midi_trigger_bytes[i] == 0: continue
 
-        midi_trigger_bits = bits(midi_trigger_bytes[i])
-        input_bits = bits(input_bytes[i])
+        midi_trigger_bits = hex_to_bits(midi_trigger_bytes[i])
+        input_bits = hex_to_bits(input_bytes[i])
 
         print('trigger bits', midi_trigger_bits)
         print('input bits', input_bits)
@@ -329,6 +330,8 @@ async def zimbel_button_loop():
             if utime.ticks_diff(utime.ticks_ms(), button_clock) >= BUTTON_HOLD_TIME:
                 change_mode(PROGRAM_MODE)
                 await blink()
+                # TODO: possible move change mode inside the start of blink(), and be able to get
+                # rid of zimbel_button_blinking and instead check for current mode
             
         else:  # Button is not being pressed
             if zimbel_button_state:
@@ -370,10 +373,12 @@ async def volume_pot_loop():
     global volume, volume_pot
 
     while True:
+        #TODO: Consider adding if statement to check if value is different?
         volume_pot_value = volume_pot.read_u16()
         
         # Reverse the mapping for pulse duration (e.g., 100 to 10 ms)
         volume = int(((65535 - volume_pot_value) / 65535) * 90) + 10
+        #TODO: add smoothing to prevent flickering pot values
         # print(f'Volume {volume_pot_value}')
 
         # Yield control to event loop
