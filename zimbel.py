@@ -42,7 +42,7 @@ BellNote = namedtuple('BellNote', ['bell', 'volume'])
 # ]
 
 BELL_SEQUENCE = [
-    [BellNote(bell=bell_d7, volume=10)]
+    [BellNote(bell=bell_d7, volume=1), BellNote(bell=bell_f7, volume=1)]
 ]
 
 BUTTON_HOLD_TIME = 3000
@@ -374,7 +374,7 @@ async def volume_pot_loop():
         
         # Reverse the mapping for pulse duration (e.g., 100 to 10 ms)
         volume = int(((65535 - volume_pot_value) / 65535) * 90) + 10
-        print(f'Volume {volume_pot_value}')
+        # print(f'Volume {volume_pot_value}')
 
         # Yield control to event loop
         await uasyncio.sleep_ms(YIELD_TIME)
@@ -383,13 +383,17 @@ async def volume_pot_loop():
 async def bell_loop():
     global zimbel_state, BELLS_ENABLED, BELL_SEQUENCE
 
-    while zimbel_state and BELLS_ENABLED:
-        for chord in BELL_SEQUENCE:
-            for note in chord:
-                print(f'Playing {note}')
-                await play_bell_note(*note)
-            print('Sleeping for 1s')
-            await uasyncio.sleep_ms(1000)
+    while True:
+        if zimbel_state and BELLS_ENABLED:
+            for chord in BELL_SEQUENCE:
+                for note in chord:
+                    print(f'Playing {note}')
+                    await play_bell_note(*note)
+                print('Sleeping for 1s')
+                await uasyncio.sleep_ms(1500)
+        
+        # Yield control to event loop
+        await uasyncio.sleep_ms(YIELD_TIME)
 
 
 async def play_bell_note(bell, volume_factor):
@@ -412,7 +416,7 @@ async def star_loop():
         if zimbel_state:
             star_byte = b'\xFF'
             star_uart.write(star_byte)
-            print(f'Sent {star_byte} to star uart')
+            # print(f'Sent {star_byte} to star uart')
             await uasyncio.sleep_ms(100)
         
         # Yield control to event loop
@@ -425,9 +429,10 @@ async def main():
     prepare_button_loop_task = uasyncio.create_task(prepare_button_loop())
     volume_pot_loop_task = uasyncio.create_task(volume_pot_loop())
     star_loop_task = uasyncio.create_task(star_loop())
+    bell_loop_task = uasyncio.create_task(bell_loop())
 
     await uasyncio.gather(midi_loop_task, zimbel_button_loop_task, prepare_button_loop_task, 
-                          volume_pot_loop_task, star_loop_task)
+                          volume_pot_loop_task, star_loop_task, bell_loop_task)
 
 
 uasyncio.run(main())
