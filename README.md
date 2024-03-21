@@ -1,6 +1,6 @@
-# Martin Luther Zimbelstern
+# The St. Martin Luther Zimbelstern
 
-Code and documentation for the Martin Luther Zimbelstern.
+Code and documentation for the St. Martin Luther Zimbelstern.
 
 ## Summary
 
