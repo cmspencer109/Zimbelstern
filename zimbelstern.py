@@ -1,4 +1,4 @@
-import machine
+import machine # TODO: is this needed? remove me
 import uasyncio
 import uos
 import utime
@@ -14,7 +14,7 @@ from machine import Pin, UART, ADC
 # maybe use whatever midi messages the organ sends when it turns on to reset the binding?
 
 
-MELODY = 'cdfgacgdcafgcadf'
+ZIMBEL_MELODY = 'cdfgacgdcafgcadf'
 
 
 # FOR DEBUGGING ONLY
@@ -389,7 +389,7 @@ async def volume_pot_loop():
 
 
 async def bell_loop():
-    global zimbel_state, BELLS_ENABLED, MELODY, tempo, volume
+    global zimbel_state, BELLS_ENABLED, ZIMBEL_MELODY, tempo, volume
 
     beat_duration_in_seconds = 60 / tempo
     strike_duration_in_seconds = volume * 0.001
@@ -397,7 +397,7 @@ async def bell_loop():
 
     while True:
         if zimbel_state and BELLS_ENABLED:
-            for note in MELODY:
+            for note in ZIMBEL_MELODY:
                 print(f'Playing {note.upper()} for {strike_duration_in_seconds} seconds')
                 await strike_bell(bells[note], volume)
                 
