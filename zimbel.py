@@ -3,7 +3,6 @@ import uasyncio
 import uos
 import utime
 from machine import Pin, UART, ADC
-from ucollections import namedtuple
 
 # TODO: Test Prepare button BEFORE stops engaged
 
@@ -27,55 +26,18 @@ bell_g = Pin(9, Pin.OUT)
 bell_a = Pin(8, Pin.OUT)
 bell_c = Pin(7, Pin.OUT)
 
-BellNote = namedtuple('BellNote', ['bell', 'volume'])
+bells = {
+    'd': bell_d,
+    'f': bell_f,
+    'g': bell_g,
+    'a': bell_a,
+    'c': bell_c
+}
 
-# BELL_SEQUENCE = [
-#     [BellNote(bell=bell_d, volume=1)],
-#     [BellNote(bell=bell_f, volume=1)],
-#     [BellNote(bell=bell_g, volume=1)],
-#     [BellNote(bell=bell_a, volume=1)],
-#     [BellNote(bell=bell_c, volume=1)]
-# ]
+BELL_SEQUENCE = 'cdfgacgdcafgcadf'
 
-# BELL_SEQUENCE = [
-#     [BellNote(bell=bell_d, volume=1), BellNote(bell=bell_f, volume=0.5)],
-#     [BellNote(bell=bell_a, volume=1), BellNote(bell=bell_c, volume=0.5)]
-# ]
-
-BELL_SEQUENCE = [
-    [BellNote(bell=bell_a, volume=1)]
-]
-
-# BELL_SEQUENCE = [
-#     [BellNote(bell=bell_d, volume=1)],
-#     [BellNote(bell=bell_f, volume=1)],
-#     [BellNote(bell=bell_g, volume=1)],
-#     [BellNote(bell=bell_a, volume=1)]
-# ]
-
-# c d f g a c g d c a f g c a d f
-
-BELL_SEQUENCE = [
-    # [BellNote(bell=bell_c, volume=1)],
-    [BellNote(bell=bell_d, volume=1)],
-    [BellNote(bell=bell_f, volume=1)],
-    [BellNote(bell=bell_g, volume=1)],
-    [BellNote(bell=bell_a, volume=1)],
-    # [BellNote(bell=bell_c, volume=1)],
-    [BellNote(bell=bell_g, volume=1)],
-    [BellNote(bell=bell_d, volume=1)],
-    # [BellNote(bell=bell_c, volume=1)],
-    [BellNote(bell=bell_a, volume=1)],
-    [BellNote(bell=bell_f, volume=1)],
-    [BellNote(bell=bell_g, volume=1)],
-    # [BellNote(bell=bell_c, volume=1)],
-    [BellNote(bell=bell_a, volume=1)],
-    [BellNote(bell=bell_d, volume=1)],
-    [BellNote(bell=bell_f, volume=1)],
-]
-
-TEST_DUR = 200
-# TEST_DUR = 1000
+STRIKE_INTERVAL = 200
+# STRIKE_INTERVAL = 1000
 
 BUTTON_HOLD_TIME = 1000 #3000
 BLINK_DURATION = 10000
@@ -420,30 +382,28 @@ async def volume_pot_loop():
 
 
 async def bell_loop():
-    global zimbel_state, BELLS_ENABLED, BELL_SEQUENCE, TEST_DUR
+    global zimbel_state, BELLS_ENABLED, BELL_SEQUENCE, STRIKE_INTERVAL
 
     while True:
         if zimbel_state and BELLS_ENABLED:
-            for chord in BELL_SEQUENCE:
-                for note in chord:
-                    print(f'Playing {note}')
-                    await play_bell_note(*note)
-                print('Sleeping for 1s')
-                await uasyncio.sleep_ms(TEST_DUR)
-                # await uasyncio.sleep_ms(1000)
+            for note in BELL_SEQUENCE:
+                print(f'Playing {note}')
+                await strike_bell(bells[note])
+                print(f'Sleeping for {STRIKE_INTERVAL}ms')
+                await uasyncio.sleep_ms(STRIKE_INTERVAL)
         
         # Yield control to event loop
         await uasyncio.sleep_ms(YIELD_TIME)
 
 
-async def play_bell_note(bell, volume_factor):
+async def strike_bell(bell):
     global pico_led, volume
 
     bell.on()
     pico_led.on()
 
-    print(f'Pulsing for {volume*volume_factor}ms')
-    await uasyncio.sleep_ms(volume*volume_factor)
+    print(f'Pulsing for {volume}ms')
+    await uasyncio.sleep_ms(volume)
     
     bell.off()
     pico_led.off()
