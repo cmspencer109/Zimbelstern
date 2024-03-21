@@ -17,6 +17,7 @@ from ucollections import namedtuple
 
 
 BELLS_ENABLED = True
+STAR_ENABLED = True
 
 pico_led = Pin(25, Pin.OUT)
 
@@ -76,7 +77,7 @@ BELL_SEQUENCE = [
 TEST_DUR = 200
 # TEST_DUR = 1000
 
-BUTTON_HOLD_TIME = 3000
+BUTTON_HOLD_TIME = 1000 #3000
 BLINK_DURATION = 10000
 
 DEBOUNCE_TIME = 100 # 50-250 ?
@@ -291,10 +292,12 @@ async def midi_loop():
 
                 # if program change
                 if is_program_change(midi_bytes):
+                    print(f'program change: {midi_bytes}')
                     if bytes_match_trigger(midi_bytes):
                         zimbel_on()
                     else:
                         zimbel_off() # TODO: test if this is needed
+                        # the above line might handle the general cancel input
 
                 # if sysex
                 if is_sysex(midi_bytes): # testing RODGERS sysex only for now
@@ -447,13 +450,13 @@ async def play_bell_note(bell, volume_factor):
 
 
 async def star_loop():
-    global zimbel_state, star_uart
+    global zimbel_state, star_uart, STAR_ENABLED
     
     while True:
-        if zimbel_state:
+        if zimbel_state and STAR_ENABLED:
             star_byte = b'\xFF'
             star_uart.write(star_byte)
-            # print(f'Sent {star_byte} to star uart')
+            print(f'Sent {star_byte} to star uart')
             await uasyncio.sleep_ms(100)
         
         # Yield control to event loop
