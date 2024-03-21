@@ -4,6 +4,7 @@ import uos
 import utime
 from machine import Pin, UART, ADC
 
+
 # TODO: Test Prepare button BEFORE stops engaged
 
 # TODO: add support for general cancel
@@ -12,11 +13,18 @@ from machine import Pin, UART, ADC
 # organ id might reset every time its turned off/on
 # maybe use whatever midi messages the organ sends when it turns on to reset the binding?
 
-# DEBUGGING = True
+
+MELODY = 'cdfgacgdcafgcadf'
 
 
+# FOR DEBUGGING ONLY
+# Set to False if needed for disabling certain features
+# Set to True in production
 BELLS_ENABLED = True
 STAR_ENABLED = True
+
+
+# Define board connections
 
 pico_led = Pin(25, Pin.OUT)
 
@@ -34,16 +42,6 @@ bells = {
     'c': bell_c
 }
 
-MELODY = 'cdfgacgdcafgcadf'
-
-tempo = 60
-
-BUTTON_HOLD_TIME = 1000 #3000
-BLINK_DURATION = 10000
-
-DEBOUNCE_TIME = 100 # 50-250 ?
-YIELD_TIME = 1 # 0-10?
-
 midi_uart = UART(0, baudrate=31250, tx=Pin(0), rx=Pin(1))
 star_uart = UART(1, baudrate=9600, tx=Pin(4))
 
@@ -55,63 +53,83 @@ zimbel_button = Pin(12, Pin.IN, Pin.PULL_UP)
 zimbel_button_lamp = Pin(15, Pin.OUT)
 zimbel_button_state = False
 
-volume_pot = ADC(26)
+control_knob = ADC(26)
 volume = 0
+tempo = 60
+
 
 # Modes
-ZIMBEL_MODE = "ZIMBEL_MODE"
-PROGRAM_MODE = "PROGRAM_MODE"
+
+ZIMBEL_MODE = 'ZIMBEL_MODE'
+PROGRAM_MODE = 'PROGRAM_MODE"'
 current_mode = ZIMBEL_MODE
 
+
+# Define and assign initial states
 
 button_clock = -1
 zimbel_state = False
 zimbel_button_lamp.value(zimbel_state)
+zimbel_is_prepared = False
+stops_on = False
+zimbel_button_blinking = False
 
 
-# TODO consider renaming to compliment prepare button name, e.g. zimbel_is_prepared
-zimbel_ready = False
-
+# Midi trigger variables
 
 midi_trigger_filename = 'midi_trigger.txt'
 midi_trigger_bytes = []
 
-stops_on = False
 
-zimbel_button_blinking = False
+# Define constants
+
+# Used to determine how long the button needs to be held to change to program mode (ms)
+# Suggested range: 3-5
+BUTTON_HOLD_TIME = 2000 # TODO: consider changing to seconds instead of ms
+
+# Used to set how long the button should blink while in program mode (ms)
+# Suggested range: 10-30
+BLINK_DURATION = 10000 # TODO: consider changing to seconds instead of ms
+
+# Used to debounce button presses (ms)
+# Suggested range: 50-200
+DEBOUNCE_TIME = 100
+
+# Used to yield control to the event loop (ms)
+YIELD_TIME = 1
 
 
 def zimbel_on():
     global zimbel_state, current_mode
     if not zimbel_state and current_mode == 'ZIMBEL_MODE':
         zimbel_state = True
-        zimbel_button_lamp.value(zimbel_state)
+        zimbel_button_lamp.value(True)
         print('Zimbel on')
-        zimbel_ready_off()
+        prepare_zimbel_off()
 
 
 def zimbel_off():
     global zimbel_state
     if zimbel_state:
         zimbel_state = False
-        zimbel_button_lamp.value(zimbel_state)
+        zimbel_button_lamp.value(False)
         print('Zimbel off')
-        zimbel_ready_off()
+        prepare_zimbel_off()
 
 
-def zimbel_ready_on():
+def prepare_zimbel_on():
     zimbel_off()
-    global zimbel_ready
-    zimbel_ready = True
-    prepare_button_lamp.value(zimbel_ready)
-    print('Zimbel ready on')
+    global zimbel_is_prepared
+    zimbel_is_prepared = True
+    prepare_button_lamp.value(True)
+    print('Prepare on')
 
 
-def zimbel_ready_off():
-    global zimbel_ready
-    zimbel_ready = False
-    prepare_button_lamp.value(zimbel_ready)
-    print('Zimbel ready off')
+def prepare_zimbel_off():
+    global zimbel_is_prepared
+    zimbel_is_prepared = False
+    prepare_button_lamp.value(False)
+    print('Prepare off')
 
 
 def change_mode(new_mode):
@@ -224,7 +242,7 @@ async def all_stops_off(input_bytes):
 
 
 async def midi_loop():
-    global current_mode, zimbel_ready, midi_trigger_bytes, midi_trigger_filename, stops_on
+    global current_mode, zimbel_is_prepared, midi_trigger_bytes, midi_trigger_filename, stops_on
 
     while True:
         if midi_uart.any():
@@ -263,7 +281,7 @@ async def midi_loop():
                         zimbel_off() # TODO: test if this is needed
 
                 # if zimbel ready and note on
-                if zimbel_ready and stops_on and is_note_on(midi_bytes):
+                if zimbel_is_prepared and stops_on and is_note_on(midi_bytes):
                     print('zimbel ready and note on')
                     zimbel_on()
 
@@ -328,7 +346,7 @@ async def zimbel_button_loop():
 
 
 async def prepare_button_loop():
-    global prepare_button_state, zimbel_ready
+    global prepare_button_state, zimbel_is_prepared
 
     while True:
         if prepare_button.value() == 0:  # Button is being pressed
@@ -337,10 +355,10 @@ async def prepare_button_loop():
                 prepare_button_state = True
                 
                 # Toggle zimbel ready state
-                if zimbel_ready:
-                    zimbel_ready_off()
+                if zimbel_is_prepared:
+                    prepare_zimbel_off()
                 else:
-                    zimbel_ready_on()
+                    prepare_zimbel_on()
 
                 # Debounce after press
                 await uasyncio.sleep_ms(DEBOUNCE_TIME)
@@ -355,11 +373,11 @@ async def prepare_button_loop():
 
 
 async def volume_pot_loop():
-    global volume, volume_pot
+    global volume, control_knob
 
     while True:
         #TODO: Consider adding if statement to check if value is different?
-        volume_pot_value = volume_pot.read_u16()
+        volume_pot_value = control_knob.read_u16()
         
         # Reverse the mapping for pulse duration (e.g., 100 to 10 ms)
         volume = int(((65535 - volume_pot_value) / 65535) * 90) + 10
