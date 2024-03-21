@@ -34,10 +34,9 @@ bells = {
     'c': bell_c
 }
 
-BELL_SEQUENCE = 'cdfgacgdcafgcadf'
+MELODY = 'cdfgacgdcafgcadf'
 
-STRIKE_INTERVAL = 200
-# STRIKE_INTERVAL = 1000
+tempo = 60
 
 BUTTON_HOLD_TIME = 1000 #3000
 BLINK_DURATION = 10000
@@ -74,21 +73,12 @@ zimbel_button_lamp.value(zimbel_state)
 zimbel_ready = False
 
 
-
 midi_trigger_filename = 'midi_trigger.txt'
 midi_trigger_bytes = []
 
 stops_on = False
 
 zimbel_button_blinking = False
-
-# Setup
-# If the file already exists, save the contents to the trigger variables
-if midi_trigger_filename in uos.listdir():
-    with open(midi_trigger_filename, 'rb') as file:
-        midi_trigger_bytes = list(file.read())
-        print('Loaded midi trigger')
-        print(midi_trigger_bytes)
 
 
 def zimbel_on():
@@ -98,7 +88,6 @@ def zimbel_on():
         zimbel_button_lamp.value(zimbel_state)
         print('Zimbel on')
         zimbel_ready_off()
-        # await bell_loop() # TODO move to top level task
 
 
 def zimbel_off():
@@ -382,28 +371,33 @@ async def volume_pot_loop():
 
 
 async def bell_loop():
-    global zimbel_state, BELLS_ENABLED, BELL_SEQUENCE, STRIKE_INTERVAL
+    global zimbel_state, BELLS_ENABLED, MELODY, tempo, volume
+
+    beat_duration_in_seconds = 60 / tempo
+    strike_duration_in_seconds = volume * 0.001
+    sleep_duration_in_seconds = beat_duration_in_seconds - strike_duration_in_seconds
 
     while True:
         if zimbel_state and BELLS_ENABLED:
-            for note in BELL_SEQUENCE:
-                print(f'Playing {note}')
-                await strike_bell(bells[note])
-                print(f'Sleeping for {STRIKE_INTERVAL}ms')
-                await uasyncio.sleep_ms(STRIKE_INTERVAL)
+            for note in MELODY:
+                print(f'Playing {note.upper()} for {strike_duration_in_seconds} seconds')
+                await strike_bell(bells[note], volume)
+                
+                print(f'Sleeping for {sleep_duration_in_seconds} seconds')
+                await uasyncio.sleep(sleep_duration_in_seconds)
         
         # Yield control to event loop
         await uasyncio.sleep_ms(YIELD_TIME)
 
 
-async def strike_bell(bell):
-    global pico_led, volume
-
+async def strike_bell(bell, strike_duration_in_ms):
+    global pico_led
+    
     bell.on()
     pico_led.on()
 
-    print(f'Pulsing for {volume}ms')
-    await uasyncio.sleep_ms(volume)
+    print(f'Striking bell for {strike_duration_in_ms} ms')
+    await uasyncio.sleep_ms(strike_duration_in_ms)
     
     bell.off()
     pico_led.off()
@@ -416,11 +410,28 @@ async def star_loop():
         if zimbel_state and STAR_ENABLED:
             star_byte = b'\xFF'
             star_uart.write(star_byte)
-            print(f'Sent {star_byte} to star uart')
+            # print(f'Sent {star_byte} to star uart')
             await uasyncio.sleep_ms(100)
         
         # Yield control to event loop
         await uasyncio.sleep_ms(YIELD_TIME)
+
+
+def setup():
+    global volume, tempo, midi_trigger_filename, midi_trigger_bytes
+
+    print('Zimbelstern ready')
+    print(f'Volume: {volume}')
+    print(f'Tempo: {tempo}')
+
+    # If the file already exists, save the contents to the trigger variables
+    if midi_trigger_filename in uos.listdir():
+        with open(midi_trigger_filename, 'rb') as file:
+            midi_trigger_bytes = list(file.read())
+            print('Loaded midi trigger')
+            print(midi_trigger_bytes)
+    
+    zimbel_on() # TODO: REMOVE ME
 
 
 async def main():
