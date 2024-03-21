@@ -20,30 +20,61 @@ BELLS_ENABLED = True
 
 pico_led = Pin(25, Pin.OUT)
 
-bell_d7 = Pin(11, Pin.OUT)
-bell_f7 = Pin(10, Pin.OUT)
-bell_g7 = Pin(9, Pin.OUT)
-bell_a7 = Pin(8, Pin.OUT)
-bell_c8 = Pin(7, Pin.OUT)
+bell_d = Pin(11, Pin.OUT)
+bell_f = Pin(10, Pin.OUT)
+bell_g = Pin(9, Pin.OUT)
+bell_a = Pin(8, Pin.OUT)
+bell_c = Pin(7, Pin.OUT)
 
 BellNote = namedtuple('BellNote', ['bell', 'volume'])
 
 # BELL_SEQUENCE = [
-#     [BellNote(bell=bell_d7, volume=1)],
-#     [BellNote(bell=bell_f7, volume=1)],
-#     [BellNote(bell=bell_g7, volume=1)],
-#     [BellNote(bell=bell_a7, volume=1)],
-#     [BellNote(bell=bell_c8, volume=1)]
+#     [BellNote(bell=bell_d, volume=1)],
+#     [BellNote(bell=bell_f, volume=1)],
+#     [BellNote(bell=bell_g, volume=1)],
+#     [BellNote(bell=bell_a, volume=1)],
+#     [BellNote(bell=bell_c, volume=1)]
 # ]
 
 # BELL_SEQUENCE = [
-#     [BellNote(bell=bell_d7, volume=1), BellNote(bell=bell_f7, volume=0.5)],
-#     [BellNote(bell=bell_a7, volume=1), BellNote(bell=bell_c8, volume=0.5)]
+#     [BellNote(bell=bell_d, volume=1), BellNote(bell=bell_f, volume=0.5)],
+#     [BellNote(bell=bell_a, volume=1), BellNote(bell=bell_c, volume=0.5)]
 # ]
 
 BELL_SEQUENCE = [
-    [BellNote(bell=bell_d7, volume=1), BellNote(bell=bell_f7, volume=1)]
+    [BellNote(bell=bell_a, volume=1)]
 ]
+
+# BELL_SEQUENCE = [
+#     [BellNote(bell=bell_d, volume=1)],
+#     [BellNote(bell=bell_f, volume=1)],
+#     [BellNote(bell=bell_g, volume=1)],
+#     [BellNote(bell=bell_a, volume=1)]
+# ]
+
+# c d f g a c g d c a f g c a d f
+
+BELL_SEQUENCE = [
+    # [BellNote(bell=bell_c, volume=1)],
+    [BellNote(bell=bell_d, volume=1)],
+    [BellNote(bell=bell_f, volume=1)],
+    [BellNote(bell=bell_g, volume=1)],
+    [BellNote(bell=bell_a, volume=1)],
+    # [BellNote(bell=bell_c, volume=1)],
+    [BellNote(bell=bell_g, volume=1)],
+    [BellNote(bell=bell_d, volume=1)],
+    # [BellNote(bell=bell_c, volume=1)],
+    [BellNote(bell=bell_a, volume=1)],
+    [BellNote(bell=bell_f, volume=1)],
+    [BellNote(bell=bell_g, volume=1)],
+    # [BellNote(bell=bell_c, volume=1)],
+    [BellNote(bell=bell_a, volume=1)],
+    [BellNote(bell=bell_d, volume=1)],
+    [BellNote(bell=bell_f, volume=1)],
+]
+
+TEST_DUR = 200
+# TEST_DUR = 1000
 
 BUTTON_HOLD_TIME = 3000
 BLINK_DURATION = 10000
@@ -386,7 +417,7 @@ async def volume_pot_loop():
 
 
 async def bell_loop():
-    global zimbel_state, BELLS_ENABLED, BELL_SEQUENCE
+    global zimbel_state, BELLS_ENABLED, BELL_SEQUENCE, TEST_DUR
 
     while True:
         if zimbel_state and BELLS_ENABLED:
@@ -395,7 +426,8 @@ async def bell_loop():
                     print(f'Playing {note}')
                     await play_bell_note(*note)
                 print('Sleeping for 1s')
-                await uasyncio.sleep_ms(1500)
+                await uasyncio.sleep_ms(TEST_DUR)
+                # await uasyncio.sleep_ms(1000)
         
         # Yield control to event loop
         await uasyncio.sleep_ms(YIELD_TIME)
