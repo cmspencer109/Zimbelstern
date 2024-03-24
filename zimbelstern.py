@@ -1,7 +1,7 @@
-import machine # TODO: is this needed? remove me
 import uasyncio
 import uos
 import utime
+import random
 from machine import Pin, UART, ADC
 
 
@@ -15,6 +15,11 @@ from machine import Pin, UART, ADC
 
 
 ZIMBEL_MELODY = 'cdfgacgdcafgcadf'
+
+# Setting this to True will override the melody with an infinite, random, non-repeating sequence of notes
+RANDOM_MELODY = True
+# Setting this to False will prevent the same note from being played twice in a row in the random melody
+ALLOW_REPEATED_NOTES = False
 
 
 # FOR DEBUGGING ONLY
@@ -73,6 +78,7 @@ zimbel_button_lamp.value(zimbel_state)
 zimbel_is_prepared = False
 stops_on = False
 zimbel_button_blinking = False
+last_note_played = None
 
 
 # Midi trigger variables
@@ -118,11 +124,12 @@ def zimbel_off():
 
 
 def prepare_zimbel_on():
-    zimbel_off()
-    global zimbel_is_prepared
-    zimbel_is_prepared = True
-    prepare_button_lamp.value(True)
-    print('Prepare on')
+    global zimbel_is_prepared, current_mode
+    if not zimbel_is_prepared and current_mode == 'ZIMBEL_MODE':
+        zimbel_off()
+        zimbel_is_prepared = True
+        prepare_button_lamp.value(True)
+        print('Prepare on')
 
 
 def prepare_zimbel_off():
@@ -372,40 +379,73 @@ async def prepare_button_loop():
         await uasyncio.sleep_ms(YIELD_TIME)
 
 
-async def volume_pot_loop():
+async def control_knob_loop():
     global volume, control_knob
 
-    while True:
-        #TODO: Consider adding if statement to check if value is different?
-        volume_pot_value = control_knob.read_u16()
-        
-        # Reverse the mapping for pulse duration (e.g., 100 to 10 ms)
-        volume = int(((65535 - volume_pot_value) / 65535) * 90) + 10
-        #TODO: add smoothing to prevent flickering pot values
-        # print(f'Volume {volume_pot_value}')
+    min_value = 20
+    max_value = 50
 
+    while True:
+        pot_value = control_knob.read_u16()
+        scaled_value = int(min_value + (pot_value / 65535) * (max_value - min_value))
+
+        if scaled_value != volume:
+            volume = scaled_value
+            print(f'Volume: {volume}')
+
+        # Yield control to event loop
+        await uasyncio.sleep_ms(YIELD_TIME) #TODO: can I move all yields ot the start of the loop?
+
+
+async def bell_loop():
+    global zimbel_state
+
+    while True:
+        if zimbel_state:
+            if ZIMBEL_MELODY and not RANDOM_MELODY:
+                await play_melody()
+            else:
+                await play_random_melody()
+        
         # Yield control to event loop
         await uasyncio.sleep_ms(YIELD_TIME)
 
 
-async def bell_loop():
-    global zimbel_state, BELLS_ENABLED, ZIMBEL_MELODY, tempo, volume
+async def play_melody():
+    global zimbel_state
+
+    for note in ZIMBEL_MELODY:
+        if zimbel_state:
+            await play_note(note)
+
+
+async def play_random_melody():
+    global zimbel_state, bells, last_note_played, ALLOW_REPEATED_NOTES
+
+    random_note = random.choice(list(bells.keys()))
+
+    while not ALLOW_REPEATED_NOTES and random_note == last_note_played:
+        random_note = random.choice(list(bells.keys()))
+
+    if zimbel_state:
+        await play_note(random_note)
+
+
+async def play_note(note):
+    global BELLS_ENABLED, volume, tempo, last_note_played
 
     beat_duration_in_seconds = 60 / tempo
     strike_duration_in_seconds = volume * 0.001
     sleep_duration_in_seconds = beat_duration_in_seconds - strike_duration_in_seconds
 
-    while True:
-        if zimbel_state and BELLS_ENABLED:
-            for note in ZIMBEL_MELODY:
-                print(f'Playing {note.upper()} for {strike_duration_in_seconds} seconds')
-                await strike_bell(bells[note], volume)
-                
-                print(f'Sleeping for {sleep_duration_in_seconds} seconds')
-                await uasyncio.sleep(sleep_duration_in_seconds)
-        
-        # Yield control to event loop
-        await uasyncio.sleep_ms(YIELD_TIME)
+    print(f'Playing {note.upper()} for {strike_duration_in_seconds} seconds')
+    if BELLS_ENABLED:
+        await strike_bell(bells[note], volume)
+    
+    print(f'Sleeping for {sleep_duration_in_seconds} seconds')
+    await uasyncio.sleep(sleep_duration_in_seconds)
+
+    last_note_played = note
 
 
 async def strike_bell(bell, strike_duration_in_ms):
@@ -414,7 +454,7 @@ async def strike_bell(bell, strike_duration_in_ms):
     bell.on()
     pico_led.on()
 
-    print(f'Striking bell for {strike_duration_in_ms} ms')
+    # print(f'Striking bell for {strike_duration_in_ms} ms')
     await uasyncio.sleep_ms(strike_duration_in_ms)
     
     bell.off()
@@ -449,19 +489,21 @@ def setup():
             print('Loaded midi trigger')
             print(midi_trigger_bytes)
     
-    zimbel_on() # TODO: REMOVE ME
+    # zimbel_on() # TODO: REMOVE ME
 
 
 async def main():
+    setup()
+    
     midi_loop_task = uasyncio.create_task(midi_loop())
     zimbel_button_loop_task = uasyncio.create_task(zimbel_button_loop())
     prepare_button_loop_task = uasyncio.create_task(prepare_button_loop())
-    volume_pot_loop_task = uasyncio.create_task(volume_pot_loop())
+    control_knob_loop_task = uasyncio.create_task(control_knob_loop())
     star_loop_task = uasyncio.create_task(star_loop())
     bell_loop_task = uasyncio.create_task(bell_loop())
 
     await uasyncio.gather(midi_loop_task, zimbel_button_loop_task, prepare_button_loop_task, 
-                          volume_pot_loop_task, star_loop_task, bell_loop_task)
+                          control_knob_loop_task, star_loop_task, bell_loop_task)
 
 
 uasyncio.run(main())
