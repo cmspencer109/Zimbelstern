@@ -7,8 +7,6 @@ from machine import Pin, UART, ADC
 
 # TODO: Test Prepare button BEFORE stops engaged
 
-# TODO: add support for general cancel
-
 # TODO: handle ID when organ turns on ?
 # organ id might reset every time its turned off/on
 # maybe use whatever midi messages the organ sends when it turns on to reset the binding?
@@ -17,7 +15,7 @@ from machine import Pin, UART, ADC
 ZIMBEL_MELODY = 'cdfgacgdcafgcadf'
 
 # Setting this to True will override the melody with an infinite, random, non-repeating sequence of notes
-RANDOM_MELODY = True
+RANDOM_MELODY = False
 # Setting this to False will prevent the same note from being played twice in a row in the random melody
 ALLOW_REPEATED_NOTES = False
 
@@ -59,8 +57,8 @@ zimbel_button_lamp = Pin(15, Pin.OUT)
 zimbel_button_state = False
 
 control_knob = ADC(26)
-volume = 0
-tempo = 60
+volume = 0 # Default value
+tempo = 250 # Default value (bpm)
 
 
 # Modes
@@ -79,7 +77,9 @@ zimbel_is_prepared = False
 stops_on = False
 zimbel_button_blinking = False
 last_note_played = None
+prepare_button_is_being_pressed = False
 
+current_fade_in_position = 0
 
 # Midi trigger variables
 
@@ -89,13 +89,18 @@ midi_trigger_bytes = []
 
 # Define constants
 
-# Used to determine how long the button needs to be held to change to program mode (ms)
-# Suggested range: 3-5
-BUTTON_HOLD_TIME = 2000 # TODO: consider changing to seconds instead of ms
+# Set to True to fade in the bells ringing
+FADE_IN = True
+# How long before the bells reach full volume and or speed (seconds)
+FADE_IN_DURATION = 2
 
-# Used to set how long the button should blink while in program mode (ms)
-# Suggested range: 10-30
-BLINK_DURATION = 10000 # TODO: consider changing to seconds instead of ms
+# Used to determine how long the button needs to be held to change to program mode (seconds)
+# Suggested range: 3-5
+BUTTON_HOLD_TIME = 2
+
+# Used to set how long the button should blink while in program mode (seconds)
+# Suggested range: 5-15
+BLINK_DURATION = 10
 
 # Used to debounce button presses (ms)
 # Suggested range: 50-200
@@ -149,6 +154,32 @@ def change_mode(new_mode):
             zimbel_off()
 
 
+def save_midi_trigger(midi_bytes):
+    global midi_trigger_bytes, midi_trigger_filename
+    midi_trigger_bytes = midi_bytes
+
+    with open(midi_trigger_filename, 'wb') as file:
+        file.write(bytes(midi_trigger_bytes))
+    
+    if midi_bytes:
+        print(f'Saved midi trigger: {list_to_hex(midi_trigger_bytes)}')
+    else:
+        print(f'Cleared midi trigger')
+
+
+def load_midi_trigger_from_file():
+    global midi_trigger_bytes, midi_trigger_filename
+    
+    if midi_trigger_filename in uos.listdir():
+        with open(midi_trigger_filename, 'rb') as file:
+            midi_trigger_bytes = list(file.read())
+
+            if midi_trigger_bytes:
+                print(f'Loaded midi trigger: {list_to_hex(midi_trigger_bytes)}')
+            else:
+                print(f'No midi trigger loaded')
+
+
 async def blink():
     global current_mode, zimbel_button_blinking
     if not zimbel_button_blinking:
@@ -158,18 +189,21 @@ async def blink():
         start_time = utime.ticks_ms()
 
         # Loop until duration has been reached or the mode changes of program mode
-        while utime.ticks_diff(utime.ticks_ms(), start_time) < BLINK_DURATION and current_mode == PROGRAM_MODE:
+        while utime.ticks_diff(utime.ticks_ms(), start_time) < BLINK_DURATION*1000 and current_mode == PROGRAM_MODE:
             zimbel_button_lamp.value(not zimbel_button_lamp.value())
             await uasyncio.sleep_ms(200)
         # End loop with led off
         zimbel_button_lamp.value(False)
         
+        # If we reach this point, the blink loop has completed and did not receive a new midi trigger
+        # Clear the trigger
+        save_midi_trigger([])
+
         # Reset mode after completing loop
         change_mode(ZIMBEL_MODE)
         zimbel_button_blinking = False
 
 
-# Note on helper
 def is_note_on(midi_bytes):
     # Check if the list has at least 3 elements
     if len(midi_bytes) < 3:
@@ -184,10 +218,22 @@ def is_note_on(midi_bytes):
     return False
 
 
-# Program change helper
+def is_control_change(message_bytes):
+    # Check if the message has at least two bytes
+    if len(message_bytes) < 2:
+        return False
+    
+    # Extract status byte and check if it is a Control Change message
+    status_byte = message_bytes[0]
+    if (status_byte & 0xF0) == 0xB0:  # Check if the most significant nibble is 1011 (Control Change)
+        return True
+    
+    return False
+
+
 def is_program_change(message_bytes):
-    # Check if the message has at least three bytes
-    if len(message_bytes) < 3:
+    # Check if the message has at least two bytes
+    if len(message_bytes) < 2:
         return False
     
     # Extract status byte and check if it is a Program Change message
@@ -198,7 +244,6 @@ def is_program_change(message_bytes):
     return False
 
 
-# Sysex helper
 def is_sysex(message_bytes):
     # Check if the message has at least two bytes
     if len(message_bytes) < 2:
@@ -244,8 +289,13 @@ def bytes_match_trigger(input_bytes):
     return True
 
 
-async def all_stops_off(input_bytes):
-    return all(byte == 0 for byte in input_bytes)
+def all_stops_off_rodgers(input_bytes):
+    rodgers_stops_bytes = input_bytes[7:-2]
+    return all(byte == 0 for byte in rodgers_stops_bytes)
+
+
+def list_to_hex(byte_list):
+    return ' '.join([hex(byte) for byte in byte_list])
 
 
 async def midi_loop():
@@ -255,63 +305,66 @@ async def midi_loop():
         if midi_uart.any():
             midi_bytes = list(midi_uart.read())
             
-            # Handle midi data differently based on current mode
+            # Filter out Active Sensing messages
+            if midi_bytes == [0xFE]: continue
+            # Strip out Active Sensing byte if it gets caught in another message
+            if midi_bytes[0] == 0xFE: midi_bytes = midi_bytes[1:]
+
+            # Handle midi messages differently based on current mode
             if current_mode == ZIMBEL_MODE:
-                # Filter out Active Sensing byte
-                if midi_bytes == [0xFE]:
-                    continue
-                print('Midi message:', midi_bytes)
-                print('Stops on:', stops_on)
-                
-                # Handle midi messages while in zimbel mode
-                # i.e. listen for midi trigger
+                # print(f'Midi message: {list_to_hex(midi_bytes)}')
+                # print('Stops on:', stops_on)
+
+                # if general cancel
+                #TODO: Replace with actual general cancel message
+                # if midi_bytes == []:
+                #     zimbel_off()
+                #     continue
 
                 # if program change
+                # Used by numbered thumb and toe pistons
                 if is_program_change(midi_bytes):
-                    print(f'program change: {midi_bytes}')
+                    # print(f'Program Change: {list_to_hex(midi_bytes)}')
                     if bytes_match_trigger(midi_bytes):
                         zimbel_on()
                     else:
-                        zimbel_off() # TODO: test if this is needed
-                        # the above line might handle the general cancel input
+                        zimbel_off() #TODO: ASK MARK IF SWITCHING TO ANOTHER NUMBERED PISTON SHOULD SHUT IT OFF
+                        #TODO: also ask Mark if pressing again should make it shut off
+
+                # if control change
+                # Used by midi coupler thumb pistons
+                # TODO: TEST: Make same message shut it off again, acting as a toggle
+                if is_control_change(midi_bytes):
+                    # print(f'Control Change: {list_to_hex(midi_bytes)}')
+                    if bytes_match_trigger(midi_bytes):
+                        # Shut it off if it's on, or turn it on if it's off
+                        if zimbel_state:
+                            zimbel_off()
+                        else:
+                            zimbel_on()
 
                 # if sysex
-                if is_sysex(midi_bytes): # testing RODGERS sysex only for now
-                    if await all_stops_off(midi_bytes[7:-2]):
+                # Used to read the state of the stops to see if stops are on or off
+                if is_sysex(midi_bytes):
+                    # Only able to read Rodgers sysex messages
+                    print(f'SysEx: {list_to_hex(midi_bytes)}')
+                    if all_stops_off_rodgers(midi_bytes):
                         stops_on = False
                     else:
                         stops_on = True
 
-                    if bytes_match_trigger(midi_bytes[7:-2]):
-                        zimbel_on()
-                    else:
-                        zimbel_off() # TODO: test if this is needed
-
-                # if zimbel ready and note on
+                # if zimbel is prepared, stops are on, and a key is pressed
                 if zimbel_is_prepared and stops_on and is_note_on(midi_bytes):
-                    print('zimbel ready and note on')
+                    print('Zimbel is prepared and note on')
                     zimbel_on()
 
             elif current_mode == PROGRAM_MODE:
-                # Handle midi messages while in program mode
-                # i.e. listen for midi and assign to trigger
-                # Filter out Active Sensing byte
-                if midi_bytes != [0xFE]:
-                    
-                    if is_program_change(midi_bytes):
-                        midi_trigger_bytes = midi_bytes
+                if is_program_change(midi_bytes):
+                    save_midi_trigger(midi_bytes)
+                elif is_control_change(midi_bytes):
+                    save_midi_trigger(midi_bytes)
 
-                    print('Program mode only working with Rodgers SYSEX right now')
-
-                    # save midi trigger
-                    midi_trigger_bytes = midi_bytes[7:-2]
-
-                    # write to file
-                    with open(midi_trigger_filename, 'wb') as file:
-                        file.write(bytes(midi_trigger_bytes))
-                    
-                    print('Saved midi trigger:', midi_trigger_bytes)
-                    change_mode(ZIMBEL_MODE)
+                change_mode(ZIMBEL_MODE)
         
         # Yield control to event loop
         await uasyncio.sleep_ms(YIELD_TIME)
@@ -336,12 +389,10 @@ async def zimbel_button_loop():
                 # Debounce after press
                 await uasyncio.sleep_ms(DEBOUNCE_TIME)
             
-            # Check if the button has been held for x number of ms
-            if utime.ticks_diff(utime.ticks_ms(), button_clock) >= BUTTON_HOLD_TIME:
+            # Check if the button has been held long enough to enter program mode
+            if utime.ticks_diff(utime.ticks_ms(), button_clock) >= BUTTON_HOLD_TIME*1000:
                 change_mode(PROGRAM_MODE)
                 await blink()
-                # TODO: possible move change mode inside the start of blink(), and be able to get
-                # rid of zimbel_button_blinking and instead check for current mode
             
         else:  # Button is not being pressed
             if zimbel_button_state:
@@ -353,15 +404,18 @@ async def zimbel_button_loop():
 
 
 async def prepare_button_loop():
-    global prepare_button_state, zimbel_is_prepared
+    global prepare_button_state, zimbel_is_prepared, prepare_button_is_being_pressed
 
     while True:
         if prepare_button.value() == 0:  # Button is being pressed
+            # print('Prepare button is being pressed')
+            prepare_button_is_being_pressed = True
+
             if not prepare_button_state:
-                # print('READY pressed')
+                # print('Prepare button pressed')
                 prepare_button_state = True
                 
-                # Toggle zimbel ready state
+                # Toggle zimbel prepared state
                 if zimbel_is_prepared:
                     prepare_zimbel_off()
                 else:
@@ -372,7 +426,8 @@ async def prepare_button_loop():
             
         else:  # Button is not being pressed
             if prepare_button_state:
-                # print('READY released')
+                # print('Prepare button released')
+                prepare_button_is_being_pressed = False
                 prepare_button_state = False
         
         # Yield control to event loop
@@ -380,21 +435,46 @@ async def prepare_button_loop():
 
 
 async def control_knob_loop():
-    global volume, control_knob
+    global control_knob, volume, tempo, prepare_button_is_being_pressed
+
+    while True:
+        new_volume = get_volume()
+        if new_volume != volume:
+            volume = new_volume
+            print(f'Volume: {volume}')
+        
+        # OLD CODE:
+        # if prepare_button_is_being_pressed: # adjust tempo
+        #     if scaled_value != tempo:
+        #         tempo = scaled_value
+        #         # print(f'Tempo: {tempo}')
+        # else: # adjust volume
+        #     if scaled_value != volume:
+        #         volume = scaled_value
+        #         # print(f'Volume: {volume}')
+
+        # print(f'Volume: {volume}')
+        # print(f'Tempo: {tempo}')
+
+        # Yield control to event loop
+        await uasyncio.sleep_ms(YIELD_TIME)
+
+
+def get_volume():
+    global control_knob
 
     min_value = 20
     max_value = 50
 
-    while True:
-        pot_value = control_knob.read_u16()
-        scaled_value = int(min_value + (pot_value / 65535) * (max_value - min_value))
+    pot_value = control_knob.read_u16()
+    scaled_value = int(min_value + (pot_value / 65535) * (max_value - min_value))
 
-        if scaled_value != volume:
-            volume = scaled_value
-            print(f'Volume: {volume}')
+    return scaled_value
 
-        # Yield control to event loop
-        await uasyncio.sleep_ms(YIELD_TIME) #TODO: can I move all yields ot the start of the loop?
+
+def get_tempo():
+    global tempo
+    return tempo
 
 
 async def bell_loop():
@@ -431,18 +511,44 @@ async def play_random_melody():
         await play_note(random_note)
 
 
-async def play_note(note):
-    global BELLS_ENABLED, volume, tempo, last_note_played
+async def _():
+    print('''
+    For all the saints who from their labors rest,
+    All who their faith before the world confessed,
+    Your name, O Jesus, be forever blest.
+    Alleluia! Alleluia!
+    ''')
 
-    beat_duration_in_seconds = 60 / tempo
+    hymn = [
+        ('c', 1), ('a', 1), ('g', 1), ('f', 3), ('c', 1), ('d', 1), ('f', 1), ('g', 1), ('c', 1), ('g', 2),
+        ('g', 1), ('f', 1), ('g', 2), ('g', 2), ('f', 1), ('g', 1), ('f', 1), ('d', 1), ('c', 4), ('f', 2),
+        ('f', 1), ('f', 1), ('c', 3), ('c', 1), ('g', 1), ('c', 1), ('g', 0.5), ('a', 0.5), ('g', 0.5), ('f', 0.5),
+        ('g', 2), ('c', 2), ('g', 2), ('d', 1), ('c', 0.5), ('g', 0.5), ('c', 2), ('f', 3), ('g', 0.5), ('a', 0.5),
+        ('g', 1), ('a', 1), ('g', 2), ('f', 4),
+    ]
+
+    for note in hymn:
+        await play_note(note=note[0], num_beats=note[1])
+
+
+async def play_note(note, num_beats=1):
+    global BELLS_ENABLED, volume, tempo, last_note_played, current_fade_in_position, FADE_IN, FADE_IN_DURATION
+
+    # handle FADE_IN = true or false
+    # should equal a number between MIN_VOLUME and volume over RAMP_UP_DURATION seconds
+    # faded_volume = volume * (current_fade_in_position / RAMP_UP_DURATION)
+    # print(faded_volume)
+
+    beat_duration_in_seconds = (60 / tempo) * num_beats
     strike_duration_in_seconds = volume * 0.001
+    # strike_duration_in_seconds = faded_volume * 0.001
     sleep_duration_in_seconds = beat_duration_in_seconds - strike_duration_in_seconds
 
-    print(f'Playing {note.upper()} for {strike_duration_in_seconds} seconds')
+    # print(f'Playing {note.upper()} for {strike_duration_in_seconds} seconds')
     if BELLS_ENABLED:
-        await strike_bell(bells[note], volume)
+        await strike_bell(bells[note], volume) # faded_volume
     
-    print(f'Sleeping for {sleep_duration_in_seconds} seconds')
+    # print(f'Sleeping for {sleep_duration_in_seconds} seconds')
     await uasyncio.sleep(sleep_duration_in_seconds)
 
     last_note_played = note
@@ -466,6 +572,8 @@ async def star_loop():
     
     while True:
         if zimbel_state and STAR_ENABLED:
+            # upper nibble determines on (F) or off (0)
+            # lower nibble determines speed (0-F)
             star_byte = b'\xFF'
             star_uart.write(star_byte)
             # print(f'Sent {star_byte} to star uart')
@@ -476,20 +584,17 @@ async def star_loop():
 
 
 def setup():
-    global volume, tempo, midi_trigger_filename, midi_trigger_bytes
+    global midi_trigger_filename, midi_trigger_bytes, volume, tempo
 
-    print('Zimbelstern ready')
+    volume = get_volume()
+    tempo = get_tempo()
+
     print(f'Volume: {volume}')
     print(f'Tempo: {tempo}')
 
-    # If the file already exists, save the contents to the trigger variables
-    if midi_trigger_filename in uos.listdir():
-        with open(midi_trigger_filename, 'rb') as file:
-            midi_trigger_bytes = list(file.read())
-            print('Loaded midi trigger')
-            print(midi_trigger_bytes)
+    load_midi_trigger_from_file()
     
-    # zimbel_on() # TODO: REMOVE ME
+    print('Zimbelstern ready')
 
 
 async def main():
