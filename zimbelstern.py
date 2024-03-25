@@ -70,7 +70,8 @@ current_mode = ZIMBEL_MODE
 
 # Define and assign initial states
 
-button_clock = -1
+zimbel_button_clock = -1
+prepare_button_clock = -1
 zimbel_state = False
 zimbel_button_lamp.value(zimbel_state)
 zimbel_is_prepared = False
@@ -371,14 +372,14 @@ async def midi_loop():
 
 
 async def zimbel_button_loop():
-    global zimbel_button_state, button_clock, zimbel_state, current_mode
+    global zimbel_button_state, zimbel_button_clock, zimbel_state, current_mode
 
     while True:
         if zimbel_button.value() == 0:  # Button is being pressed
             if not zimbel_button_state:
                 #print('Button pressed')
                 zimbel_button_state = True
-                button_clock = utime.ticks_ms()
+                zimbel_button_clock = utime.ticks_ms()
                 
                 # Toggle zimbel state
                 if zimbel_state:
@@ -390,7 +391,7 @@ async def zimbel_button_loop():
                 await uasyncio.sleep_ms(DEBOUNCE_TIME)
             
             # Check if the button has been held long enough to enter program mode
-            if utime.ticks_diff(utime.ticks_ms(), button_clock) >= BUTTON_HOLD_TIME*1000:
+            if utime.ticks_diff(utime.ticks_ms(), zimbel_button_clock) >= BUTTON_HOLD_TIME*1000:
                 change_mode(PROGRAM_MODE)
                 await blink()
             
@@ -404,7 +405,7 @@ async def zimbel_button_loop():
 
 
 async def prepare_button_loop():
-    global prepare_button_state, zimbel_is_prepared, prepare_button_is_being_pressed
+    global prepare_button_state, prepare_button_clock, zimbel_is_prepared, prepare_button_is_being_pressed
 
     while True:
         if prepare_button.value() == 0:  # Button is being pressed
@@ -414,6 +415,7 @@ async def prepare_button_loop():
             if not prepare_button_state:
                 # print('Prepare button pressed')
                 prepare_button_state = True
+                prepare_button_clock = utime.ticks_ms()
                 
                 # Toggle zimbel prepared state
                 if zimbel_is_prepared:
@@ -423,6 +425,9 @@ async def prepare_button_loop():
 
                 # Debounce after press
                 await uasyncio.sleep_ms(DEBOUNCE_TIME)
+
+            if utime.ticks_diff(utime.ticks_ms(), prepare_button_clock) >= 10000:
+                await _()
             
         else:  # Button is not being pressed
             if prepare_button_state:
@@ -512,6 +517,13 @@ async def play_random_melody():
 
 
 async def _():
+    global zimbel_button_state, prepare_button_state
+
+    zimbel_off()
+    prepare_zimbel_off()
+
+    print(zimbel_button_state, prepare_button_state)
+
     print('''
     For all the saints who from their labors rest,
     All who their faith before the world confessed,
@@ -528,11 +540,11 @@ async def _():
     ]
 
     for note in hymn:
-        await play_note(note=note[0], num_beats=note[1])
+        await play_note(note=note[0], num_beats=note[1], tempo=100)
 
 
-async def play_note(note, num_beats=1):
-    global BELLS_ENABLED, volume, tempo, last_note_played, current_fade_in_position, FADE_IN, FADE_IN_DURATION
+async def play_note(note, num_beats=1, tempo=tempo):
+    global BELLS_ENABLED, volume, last_note_played, current_fade_in_position, FADE_IN, FADE_IN_DURATION
 
     # handle FADE_IN = true or false
     # should equal a number between MIN_VOLUME and volume over RAMP_UP_DURATION seconds
