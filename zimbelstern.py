@@ -64,7 +64,7 @@ tempo = 250 # Default value (bpm)
 # Modes
 
 ZIMBEL_MODE = 'ZIMBEL_MODE'
-PROGRAM_MODE = 'PROGRAM_MODE"'
+PROGRAM_MODE = 'PROGRAM_MODE'
 current_mode = ZIMBEL_MODE
 
 
@@ -146,13 +146,17 @@ def prepare_zimbel_off():
 
 
 def change_mode(new_mode):
-    global current_mode
+    global current_mode, zimbel_button_state, prepare_button_state
+
+    zimbel_button_state = False
+    prepare_button_state = False
+
     if current_mode != new_mode:
         print('Mode changed to', new_mode)
-        current_mode = new_mode
-        if current_mode == PROGRAM_MODE:
+        if new_mode == PROGRAM_MODE:
             # Actions to perform when entering program mode:
             zimbel_off()
+        current_mode = new_mode
 
 
 def save_midi_trigger(midi_bytes):
@@ -381,11 +385,11 @@ async def zimbel_button_loop():
                 zimbel_button_state = True
                 zimbel_button_clock = utime.ticks_ms()
                 
-                # Toggle zimbel state
+                # Toggle button lamp on button press
                 if zimbel_state:
-                    zimbel_off()
+                    zimbel_button_lamp.value(False)
                 else:
-                    zimbel_on()
+                    zimbel_button_lamp.value(True)
                 
                 # Debounce after press
                 await uasyncio.sleep_ms(DEBOUNCE_TIME)
@@ -399,6 +403,12 @@ async def zimbel_button_loop():
             if zimbel_button_state:
                 #print('Button released')
                 zimbel_button_state = False
+                
+                # Toggle zimbel state after button release
+                if zimbel_state:
+                    zimbel_off()
+                else:
+                    zimbel_on()
         
         # Yield control to event loop
         await uasyncio.sleep_ms(YIELD_TIME)
@@ -522,7 +532,7 @@ async def _():
     zimbel_off()
     prepare_zimbel_off()
 
-    print(zimbel_button_state, prepare_button_state)
+    # print(zimbel_button_state, prepare_button_state) # TODO: remove me
 
     print('''
     For all the saints who from their labors rest,
