@@ -363,6 +363,13 @@ async def midi_loop():
                     print('Zimbel is prepared and note on')
                     zimbel_on()
 
+                # if general cancel
+                #TODO: Replace with actual general cancel message
+                # print(midi_bytes)
+                # if midi_bytes == []:
+                #     zimbel_off()
+                #     continue
+
             elif current_mode == PROGRAM_MODE:
                 if is_program_change(midi_bytes):
                     save_midi_trigger(midi_bytes)
