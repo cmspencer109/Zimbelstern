@@ -361,7 +361,7 @@ async def midi_loop():
                 if is_control_change(midi_bytes):
                     # print(f'Control Change: {list_to_hex(midi_bytes)}')
                     if bytes_match_trigger(midi_bytes):
-                        # Shut it off if it's on, or turn it on if it's off
+                        # Toggle zimbel on or off
                         if zimbel_state:
                             zimbel_off()
                         else:
@@ -387,6 +387,7 @@ async def midi_loop():
                 # print(midi_bytes)
                 # if midi_bytes == []:
                 #     zimbel_off()
+                #     stops_on = False
                 #     continue
 
             elif current_mode == PROGRAM_MODE:
@@ -508,6 +509,7 @@ def get_volume():
     max_value = 50
 
     pot_value = control_knob.read_u16()
+    # scaled_value = int(min_value + ((65535 - pot_value) / 65535) * (max_value - min_value)) # reversed
     scaled_value = int(min_value + (pot_value / 65535) * (max_value - min_value))
 
     return scaled_value
