@@ -206,6 +206,7 @@ async def blink():
         # End loop with led off
         zimbel_button_lamp.value(False)
         
+        # FIXME: This line looks like it will always get called
         # If we reach this point, the blink loop has completed and did not receive a new midi trigger
         # Clear the trigger
         save_midi_trigger([])
