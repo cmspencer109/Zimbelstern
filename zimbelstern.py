@@ -506,7 +506,7 @@ async def control_knob_loop():
 def get_volume():
     global control_knob
 
-    min_value = 20
+    min_value = 15
     max_value = 50
 
     pot_value = control_knob.read_u16()
@@ -579,7 +579,7 @@ async def _():
     ]
 
     for note in hymn:
-        await play_note(note=note[0], num_beats=note[1], tempo=100)
+        await play_note(note=note[0], num_beats=note[1], tempo=120)
 
 
 async def play_note(note, num_beats=1, tempo=tempo):
