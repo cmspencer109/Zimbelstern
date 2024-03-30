@@ -5,13 +5,10 @@ import random
 from machine import Pin, UART, ADC
 
 
-# TODO: Test Prepare button BEFORE stops engaged
-
-
 ZIMBEL_MELODY = 'cdfgacgdcafgcadf'
 
 # Setting this to True will override the melody with an infinite, random, non-repeating sequence of notes
-RANDOM_MELODY = False
+RANDOM_MELODY = True
 # Setting this to False will prevent the same note from being played twice in a row in the random melody
 ALLOW_REPEATED_NOTES = False
 
@@ -169,6 +166,8 @@ def save_midi_trigger(midi_bytes):
     global midi_trigger_bytes, midi_trigger_filename
     midi_trigger_bytes = midi_bytes
 
+    print(midi_bytes)
+
     with open(midi_trigger_filename, 'wb') as file:
         file.write(bytes(midi_trigger_bytes))
     
@@ -209,7 +208,8 @@ async def blink():
         # FIXME: This line looks like it will always get called
         # If we reach this point, the blink loop has completed and did not receive a new midi trigger
         # Clear the trigger
-        save_midi_trigger([])
+        if current_mode == PROGRAM_MODE:
+            save_midi_trigger([])
 
         # Reset mode after completing loop
         change_mode(ZIMBEL_MODE)
@@ -276,29 +276,45 @@ def hex_to_bits(hex_number, total_width=8):
     return '0' * (total_width - len(binary_representation)) + binary_representation
 
 
+def is_sublist(midi_trigger_bytes, input_bytes):
+    for i in range(len(input_bytes) - len(midi_trigger_bytes) + 1):
+        if input_bytes[i:i+len(midi_trigger_bytes)] == midi_trigger_bytes:
+            return True
+    return False
+
+
 def bytes_match_trigger(input_bytes):
     global midi_trigger_bytes
 
     print('checking if bytes match trigger')
-    print('number of bytes in trigger', len(midi_trigger_bytes))
-    print('number of bytes received', len(input_bytes))
 
-    for i in range(len(midi_trigger_bytes)):
-        # save time by not checking empty bytes
-        if midi_trigger_bytes[i] == 0: continue
+    if is_sublist(midi_trigger_bytes, input_bytes):
+        print(f'MATCH FOUND: in: {input_bytes} trigger: {midi_trigger_bytes}')
+        return True
+    else:
+        print(f'NO MATCH: in: {input_bytes} trigger: {midi_trigger_bytes}')
+        return False
 
-        midi_trigger_bits = hex_to_bits(midi_trigger_bytes[i])
-        input_bits = hex_to_bits(input_bytes[i])
+    # print('number of bytes in trigger', len(midi_trigger_bytes))
+    # print('number of bytes received', len(input_bytes))
 
-        print('trigger bits', midi_trigger_bits)
-        print('input bits', input_bits)
+    # for i in range(len(midi_trigger_bytes)):
+    #     # save time by not checking empty bytes
+    #     if midi_trigger_bytes[i] == 0: continue
 
-        for j in range(8):
-            # not a match if our trigger bit is off when it should be on
-            if int(midi_trigger_bits[j]) == 1 and int(input_bits[j]) == 0:
-                print('doesnt match trigger, returning false')
-                return False
-    return True
+    #     midi_trigger_bits = hex_to_bits(midi_trigger_bytes[i])
+    #     input_bits = hex_to_bits(input_bytes[i])
+
+    #     print('trigger bits', midi_trigger_bits)
+    #     print('input bits', input_bits)
+
+    #     for j in range(8):
+    #         # not a match if our trigger bit is off when it should be on
+    #         if int(midi_trigger_bits[j]) == 1 and int(input_bits[j]) == 0:
+    #             print('doesnt match trigger, returning false')
+    #             return False
+    # print(f'MATCH FOUND: in: {list_to_hex(input_bytes)} trigger: {list_to_hex(midi_trigger_bytes)}')
+    # return True
 
 
 def all_stops_off_rodgers(input_bytes):
@@ -336,15 +352,15 @@ async def midi_loop():
 
             # Handle midi messages differently based on current mode
             if current_mode == ZIMBEL_MODE:
-                # print(f'Midi message: {list_to_hex(midi_bytes)}')
+                print(f'Midi message: {list_to_hex(midi_bytes)}')
                 # print('Stops on:', stops_on)
 
                 # if the organ is turned on
-                if organ_power_on_message(): #TODO: test me
-                    zimbel_off()
-                    prepare_zimbel_off()
-                    stops_on = False
-                    save_midi_trigger([])
+                # if organ_power_on_message(): #TODO: test me
+                #     zimbel_off()
+                #     prepare_zimbel_off()
+                #     stops_on = False
+                #     save_midi_trigger([])
 
                 # if program change
                 # Used by numbered thumb and toe pistons
@@ -384,12 +400,11 @@ async def midi_loop():
                     zimbel_on()
 
                 # if general cancel
-                #TODO: Replace with actual general cancel message
-                # print(midi_bytes)
-                # if midi_bytes == []:
-                #     zimbel_off()
-                #     stops_on = False
-                #     continue
+                if midi_bytes == [203, 19]:
+                    print('GENERAL CANCEL')
+                    zimbel_off()
+                    stops_on = False
+                    continue
 
             elif current_mode == PROGRAM_MODE:
                 if is_program_change(midi_bytes):
@@ -571,10 +586,10 @@ async def _():
     ''')
 
     hymn = [
-        ('c', 1), ('a', 1), ('g', 1), ('f', 3), ('c', 1), ('d', 1), ('f', 1), ('g', 1), ('c', 1), ('g', 2),
+        ('c', 1), ('a', 1), ('g', 1), ('f', 3), ('c', 1), ('d', 1), ('f', 1), ('g', 1), ('c', 1), ('a', 2),
         ('g', 1), ('f', 1), ('g', 2), ('g', 2), ('f', 1), ('g', 1), ('f', 1), ('d', 1), ('c', 4), ('f', 2),
         ('f', 1), ('f', 1), ('c', 3), ('c', 1), ('g', 1), ('c', 1), ('g', 0.5), ('a', 0.5), ('g', 0.5), ('f', 0.5),
-        ('g', 2), ('c', 2), ('g', 2), ('d', 1), ('c', 0.5), ('g', 0.5), ('c', 2), ('f', 3), ('g', 0.5), ('a', 0.5),
+        ('g', 2), ('c', 2), ('d', 1), ('c', 0.5), ('a', 0.5), ('c', 2), ('a', 3), ('g', 0.5), ('a', 0.5),
         ('g', 1), ('a', 1), ('g', 2), ('f', 4),
     ]
 
