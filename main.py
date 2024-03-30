@@ -70,7 +70,6 @@ stops_on = False
 zimbel_button_blinking = False
 last_note_played = None
 prepare_button_is_being_pressed = False
-midi_bytes_history = [] # will store the last 100 midi bytes
 
 # Midi trigger variables
 
@@ -94,16 +93,6 @@ DEBOUNCE_TIME = 100
 
 # Used to yield control to the event loop (ms)
 YIELD_TIME = 1
-
-# The bytes the organ sends when it turns on
-# used to notify the zimbelstern to unset itself (clear the midi trigger)
-# this could be one message or a series of messages
-# This particular message sent by the Rodgers T788E sends 3 control change messages, 3 times, off-on-off
-ORGAN_LOADED_BYTES = [
-    189, 7, 0, 188, 7, 0, 187, 7, 0, 
-    189, 7, 127, 188, 7, 127, 187, 7, 127, 
-    187, 7, 0, 188, 7, 0, 189, 7, 0
-]
 
 
 def zimbel_on():
@@ -292,16 +281,8 @@ def all_stops_off_rodgers(input_bytes):
     return all(byte == 0 for byte in rodgers_stops_bytes)
 
 
-def organ_power_on_message():
-    global ORGAN_LOADED_BYTES, midi_bytes_history
-    # Check if the latest bytes match the organ power on message
-    if midi_bytes_history[-len(ORGAN_LOADED_BYTES):] == ORGAN_LOADED_BYTES:
-        return True
-    return False
-
-
 async def midi_loop():
-    global current_mode, zimbel_is_prepared, midi_trigger_bytes, midi_trigger_filename, stops_on, midi_bytes_history
+    global current_mode, zimbel_is_prepared, midi_trigger_bytes, midi_trigger_filename, stops_on
 
     while True:
         if midi_uart.any():
@@ -312,21 +293,10 @@ async def midi_loop():
             # Strip out Active Sensing byte if it gets caught in another message
             if midi_bytes[0] == 0xFE: midi_bytes = midi_bytes[1:]
 
-            midi_bytes_history.extend(midi_bytes)
-            # only keep the last 100 bytes
-            midi_bytes_history = midi_bytes_history[-100:]
-
             # Handle midi messages differently based on current mode
             if current_mode == ZIMBEL_MODE:
                 # print(f'Midi message: {midi_bytes}') # for testing
                 # print('Stops on:', stops_on) # for testing
-
-                # if the organ is turned on
-                # if organ_power_on_message(): #TODO: test me
-                #     zimbel_off()
-                #     prepare_zimbel_off()
-                #     stops_on = False
-                #     save_midi_trigger([])
 
                 # if program change (Used by numbered thumb and toe pistons on the organ)
                 # One press to turn on, another press does nothing, 
