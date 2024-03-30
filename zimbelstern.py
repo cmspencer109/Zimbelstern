@@ -72,7 +72,6 @@ stops_on = False
 zimbel_button_blinking = False
 last_note_played = None
 prepare_button_is_being_pressed = False
-current_fade_in_position = 0
 midi_bytes_history = [] # will store the last 100 midi bytes
 
 # Midi trigger variables
@@ -82,11 +81,6 @@ midi_trigger_bytes = []
 
 
 # Define constants
-
-# Set to True to fade in the bells ringing
-FADE_IN = True
-# How long before the bells reach full volume and or speed (seconds)
-FADE_IN_DURATION = 2
 
 # Used to determine how long the button needs to be held to change to program mode (seconds)
 # Suggested range: 3-5
@@ -105,8 +99,8 @@ YIELD_TIME = 1
 
 # The bytes the organ sends when it turns on
 # used to notify the zimbelstern to unset itself (clear the midi trigger)
-# this can be one message or a series of messages
-# This particular message sent by the Rodgers T788E sends 3 control change messages, 3 times off-on-off
+# this could be one message or a series of messages
+# This particular message sent by the Rodgers T788E sends 3 control change messages, 3 times, off-on-off
 ORGAN_LOADED_BYTES = [
     189, 7, 0, 188, 7, 0, 187, 7, 0, 
     189, 7, 127, 188, 7, 127, 187, 7, 127, 
@@ -205,9 +199,7 @@ async def blink():
         # End loop with led off
         zimbel_button_lamp.value(False)
         
-        # FIXME: This line looks like it will always get called
-        # If we reach this point, the blink loop has completed and did not receive a new midi trigger
-        # Clear the trigger
+        # If we reach this point and we are still in program mode, clear the trigger 
         if current_mode == PROGRAM_MODE:
             save_midi_trigger([])
 
@@ -276,9 +268,9 @@ def hex_to_bits(hex_number, total_width=8):
     return '0' * (total_width - len(binary_representation)) + binary_representation
 
 
-def is_sublist(midi_trigger_bytes, input_bytes):
-    for i in range(len(input_bytes) - len(midi_trigger_bytes) + 1):
-        if input_bytes[i:i+len(midi_trigger_bytes)] == midi_trigger_bytes:
+def is_sublist(inner_list, outer_list):
+    for i in range(len(outer_list) - len(inner_list) + 1):
+        if outer_list[i:i+len(inner_list)] == inner_list:
             return True
     return False
 
@@ -286,35 +278,15 @@ def is_sublist(midi_trigger_bytes, input_bytes):
 def bytes_match_trigger(input_bytes):
     global midi_trigger_bytes
 
-    print('checking if bytes match trigger')
+    print('Checking if input bytes match trigger')
+    print('Input: {input_bytes}\nTrigger: {midi_trigger_bytes}')
 
     if is_sublist(midi_trigger_bytes, input_bytes):
-        print(f'MATCH FOUND: in: {input_bytes} trigger: {midi_trigger_bytes}')
+        print(f'Match found')
         return True
     else:
-        print(f'NO MATCH: in: {input_bytes} trigger: {midi_trigger_bytes}')
+        print(f'Not a match')
         return False
-
-    # print('number of bytes in trigger', len(midi_trigger_bytes))
-    # print('number of bytes received', len(input_bytes))
-
-    # for i in range(len(midi_trigger_bytes)):
-    #     # save time by not checking empty bytes
-    #     if midi_trigger_bytes[i] == 0: continue
-
-    #     midi_trigger_bits = hex_to_bits(midi_trigger_bytes[i])
-    #     input_bits = hex_to_bits(input_bytes[i])
-
-    #     print('trigger bits', midi_trigger_bits)
-    #     print('input bits', input_bits)
-
-    #     for j in range(8):
-    #         # not a match if our trigger bit is off when it should be on
-    #         if int(midi_trigger_bits[j]) == 1 and int(input_bits[j]) == 0:
-    #             print('doesnt match trigger, returning false')
-    #             return False
-    # print(f'MATCH FOUND: in: {list_to_hex(input_bytes)} trigger: {list_to_hex(midi_trigger_bytes)}')
-    # return True
 
 
 def all_stops_off_rodgers(input_bytes):
@@ -352,8 +324,8 @@ async def midi_loop():
 
             # Handle midi messages differently based on current mode
             if current_mode == ZIMBEL_MODE:
-                print(f'Midi message: {list_to_hex(midi_bytes)}')
-                # print('Stops on:', stops_on)
+                # print(f'Midi message: {list_to_hex(midi_bytes)}') # for testing
+                # print('Stops on:', stops_on) # for testing
 
                 # if the organ is turned on
                 # if organ_power_on_message(): #TODO: test me
@@ -362,21 +334,20 @@ async def midi_loop():
                 #     stops_on = False
                 #     save_midi_trigger([])
 
-                # if program change
-                # Used by numbered thumb and toe pistons
+                # if program change (Used by numbered thumb and toe pistons on the organ)
+                # One press to turn on, another press does nothing, 
+                # but a different program change message will turn it off
                 if is_program_change(midi_bytes):
-                    # print(f'Program Change: {list_to_hex(midi_bytes)}')
+                    print(f'Program Change: {list_to_hex(midi_bytes)}')
                     if bytes_match_trigger(midi_bytes):
                         zimbel_on()
                     else:
-                        zimbel_off() #TODO: ASK MARK IF SWITCHING TO ANOTHER NUMBERED PISTON SHOULD SHUT IT OFF
-                        #TODO: also ask Mark if pressing again should make it shut off
+                        zimbel_off()
 
-                # if control change
-                # Used by midi coupler thumb pistons
-                # TODO: TEST: Make same message shut it off again, acting as a toggle
+                # if control change (Used by midi coupler thumb pistons on the organ)
+                # One press to turn on, another press to turn off (behaves like a toggle)
                 if is_control_change(midi_bytes):
-                    # print(f'Control Change: {list_to_hex(midi_bytes)}')
+                    print(f'Control Change: {list_to_hex(midi_bytes)}')
                     if bytes_match_trigger(midi_bytes):
                         # Toggle zimbel on or off
                         if zimbel_state:
@@ -384,7 +355,7 @@ async def midi_loop():
                         else:
                             zimbel_on()
 
-                # if sysex
+                # if sysex (Used by Rodgers organs to send stop state messages)
                 # Used to read the state of the stops to see if stops are on or off
                 if is_sysex(midi_bytes):
                     # Only able to read Rodgers sysex messages
@@ -401,7 +372,7 @@ async def midi_loop():
 
                 # if general cancel
                 if midi_bytes == [203, 19]:
-                    print('GENERAL CANCEL')
+                    print('General Cancel')
                     zimbel_off()
                     stops_on = False
                     continue
@@ -500,19 +471,6 @@ async def control_knob_loop():
         if new_volume != volume:
             volume = new_volume
             print(f'Volume: {volume}')
-        
-        # OLD CODE:
-        # if prepare_button_is_being_pressed: # adjust tempo
-        #     if scaled_value != tempo:
-        #         tempo = scaled_value
-        #         # print(f'Tempo: {tempo}')
-        # else: # adjust volume
-        #     if scaled_value != volume:
-        #         volume = scaled_value
-        #         # print(f'Volume: {volume}')
-
-        # print(f'Volume: {volume}')
-        # print(f'Tempo: {tempo}')
 
         # Yield control to event loop
         await uasyncio.sleep_ms(YIELD_TIME)
@@ -525,7 +483,6 @@ def get_volume():
     max_value = 50
 
     pot_value = control_knob.read_u16()
-    # scaled_value = int(min_value + ((65535 - pot_value) / 65535) * (max_value - min_value)) # reversed
     scaled_value = int(min_value + (pot_value / 65535) * (max_value - min_value))
 
     return scaled_value
@@ -576,8 +533,6 @@ async def _():
     zimbel_off()
     prepare_zimbel_off()
 
-    # print(zimbel_button_state, prepare_button_state) # TODO: remove me
-
     print('''
     For all the saints who from their labors rest,
     All who their faith before the world confessed,
@@ -598,21 +553,15 @@ async def _():
 
 
 async def play_note(note, num_beats=1, tempo=tempo):
-    global BELLS_ENABLED, volume, last_note_played, current_fade_in_position, FADE_IN, FADE_IN_DURATION
-
-    # handle FADE_IN = true or false
-    # should equal a number between MIN_VOLUME and volume over RAMP_UP_DURATION seconds
-    # faded_volume = volume * (current_fade_in_position / RAMP_UP_DURATION)
-    # print(faded_volume)
+    global BELLS_ENABLED, volume, last_note_played
 
     beat_duration_in_seconds = (60 / tempo) * num_beats
     strike_duration_in_seconds = volume * 0.001
-    # strike_duration_in_seconds = faded_volume * 0.001
     sleep_duration_in_seconds = beat_duration_in_seconds - strike_duration_in_seconds
 
     # print(f'Playing {note.upper()} for {strike_duration_in_seconds} seconds')
     if BELLS_ENABLED:
-        await strike_bell(bells[note], volume) # faded_volume
+        await strike_bell(bells[note], volume)
     
     # print(f'Sleeping for {sleep_duration_in_seconds} seconds')
     await uasyncio.sleep(sleep_duration_in_seconds)
