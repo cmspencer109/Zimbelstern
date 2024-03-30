@@ -268,7 +268,7 @@ def bytes_match_trigger(input_bytes):
     print(f'Checking if input bytes match trigger')
     print(f'Input: {input_bytes}\nTrigger: {midi_trigger_bytes}')
 
-    if is_sublist(midi_trigger_bytes, input_bytes):
+    if is_sublist(midi_trigger_bytes, input_bytes) and midi_trigger_bytes != []:
         print(f'Match found')
         return True
     else:
