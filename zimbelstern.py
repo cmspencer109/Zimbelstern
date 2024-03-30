@@ -9,8 +9,6 @@ ZIMBEL_MELODY = 'cdfgacgdcafgcadf'
 
 # Setting this to True will override the melody with an infinite, random, non-repeating sequence of notes
 RANDOM_MELODY = True
-# Setting this to False will prevent the same note from being played twice in a row in the random melody
-ALLOW_REPEATED_NOTES = False
 
 
 # FOR DEBUGGING ONLY
@@ -516,11 +514,12 @@ async def play_melody():
 
 
 async def play_random_melody():
-    global zimbel_state, bells, last_note_played, ALLOW_REPEATED_NOTES
+    global zimbel_state, bells, last_note_played
 
     random_note = random.choice(list(bells.keys()))
 
-    while not ALLOW_REPEATED_NOTES and random_note == last_note_played:
+    # Prevent the same note from being played twice in a row
+    while random_note == last_note_played:
         random_note = random.choice(list(bells.keys()))
 
     if zimbel_state:
