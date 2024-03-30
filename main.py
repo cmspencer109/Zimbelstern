@@ -49,7 +49,7 @@ zimbel_button_state = False
 
 control_knob = ADC(26)
 volume = 0 # Default value
-tempo = 250 # Default value (bpm)
+tempo = 300 # Default value (bpm)
 
 
 # Modes
