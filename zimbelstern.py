@@ -81,8 +81,8 @@ midi_trigger_bytes = []
 # Define constants
 
 # Used to determine how long the button needs to be held to change to program mode (seconds)
-# Suggested range: 3-5
-BUTTON_HOLD_TIME = 2
+# Suggested range: 2-5
+BUTTON_HOLD_TIME = 1.5
 
 # Used to set how long the button should blink while in program mode (seconds)
 # Suggested range: 5-15
