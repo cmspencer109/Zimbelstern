@@ -164,7 +164,7 @@ def save_midi_trigger(midi_bytes):
         file.write(bytes(midi_trigger_bytes))
     
     if midi_bytes:
-        print(f'Saved midi trigger: {list_to_hex(midi_trigger_bytes)}')
+        print(f'Saved midi trigger: {midi_trigger_bytes}')
     else:
         print(f'Cleared midi trigger')
 
@@ -177,7 +177,7 @@ def load_midi_trigger_from_file():
             midi_trigger_bytes = list(file.read())
 
             if midi_trigger_bytes:
-                print(f'Loaded midi trigger: {list_to_hex(midi_trigger_bytes)}')
+                print(f'Loaded midi trigger: {midi_trigger_bytes}')
             else:
                 print(f'No midi trigger loaded')
 
@@ -276,8 +276,8 @@ def is_sublist(inner_list, outer_list):
 def bytes_match_trigger(input_bytes):
     global midi_trigger_bytes
 
-    print('Checking if input bytes match trigger')
-    print('Input: {input_bytes}\nTrigger: {midi_trigger_bytes}')
+    print(f'Checking if input bytes match trigger')
+    print(f'Input: {input_bytes}\nTrigger: {midi_trigger_bytes}')
 
     if is_sublist(midi_trigger_bytes, input_bytes):
         print(f'Match found')
@@ -290,10 +290,6 @@ def bytes_match_trigger(input_bytes):
 def all_stops_off_rodgers(input_bytes):
     rodgers_stops_bytes = input_bytes[7:-2]
     return all(byte == 0 for byte in rodgers_stops_bytes)
-
-
-def list_to_hex(byte_list):
-    return ' '.join([hex(byte) for byte in byte_list])
 
 
 def organ_power_on_message():
@@ -322,7 +318,7 @@ async def midi_loop():
 
             # Handle midi messages differently based on current mode
             if current_mode == ZIMBEL_MODE:
-                # print(f'Midi message: {list_to_hex(midi_bytes)}') # for testing
+                # print(f'Midi message: {midi_bytes}') # for testing
                 # print('Stops on:', stops_on) # for testing
 
                 # if the organ is turned on
@@ -336,7 +332,7 @@ async def midi_loop():
                 # One press to turn on, another press does nothing, 
                 # but a different program change message will turn it off
                 if is_program_change(midi_bytes):
-                    print(f'Program Change: {list_to_hex(midi_bytes)}')
+                    print(f'Program Change: {midi_bytes}')
                     if bytes_match_trigger(midi_bytes):
                         zimbel_on()
                     else:
@@ -345,7 +341,7 @@ async def midi_loop():
                 # if control change (Used by midi coupler thumb pistons on the organ)
                 # One press to turn on, another press to turn off (behaves like a toggle)
                 if is_control_change(midi_bytes):
-                    print(f'Control Change: {list_to_hex(midi_bytes)}')
+                    print(f'Control Change: {midi_bytes}')
                     if bytes_match_trigger(midi_bytes):
                         # Toggle zimbel on or off
                         if zimbel_state:
@@ -357,7 +353,7 @@ async def midi_loop():
                 # Used to read the state of the stops to see if stops are on or off
                 if is_sysex(midi_bytes):
                     # Only able to read Rodgers sysex messages
-                    print(f'SysEx: {list_to_hex(midi_bytes)}')
+                    print(f'SysEx: {midi_bytes}')
                     if all_stops_off_rodgers(midi_bytes):
                         stops_on = False
                     else:
