@@ -69,7 +69,6 @@ zimbel_is_prepared = False
 stops_on = False
 zimbel_button_blinking = False
 last_note_played = None
-prepare_button_is_being_pressed = False
 
 # Midi trigger variables
 
@@ -393,13 +392,10 @@ async def zimbel_button_loop():
 
 
 async def prepare_button_loop():
-    global prepare_button_state, prepare_button_clock, zimbel_is_prepared, prepare_button_is_being_pressed
+    global prepare_button_state, prepare_button_clock, zimbel_is_prepared, 
 
     while True:
         if prepare_button.value() == 0:  # Button is being pressed
-            # print('Prepare button is being pressed')
-            prepare_button_is_being_pressed = True
-
             if not prepare_button_state:
                 # print('Prepare button pressed')
                 prepare_button_state = True
@@ -414,13 +410,13 @@ async def prepare_button_loop():
                 # Debounce after press
                 await uasyncio.sleep_ms(DEBOUNCE_TIME)
 
+            # Do something special if the prepare button is held for 10 seconds...
             if utime.ticks_diff(utime.ticks_ms(), prepare_button_clock) >= 10000:
                 await _()
             
         else:  # Button is not being pressed
             if prepare_button_state:
                 # print('Prepare button released')
-                prepare_button_is_being_pressed = False
                 prepare_button_state = False
         
         # Yield control to event loop
@@ -428,7 +424,7 @@ async def prepare_button_loop():
 
 
 async def control_knob_loop():
-    global control_knob, volume, tempo, prepare_button_is_being_pressed
+    global control_knob, volume, tempo
 
     while True:
         new_volume = get_volume()
