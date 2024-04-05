@@ -392,7 +392,7 @@ async def zimbel_button_loop():
 
 
 async def prepare_button_loop():
-    global prepare_button_state, prepare_button_clock, zimbel_is_prepared, 
+    global prepare_button_state, prepare_button_clock, zimbel_is_prepared
 
     while True:
         if prepare_button.value() == 0:  # Button is being pressed
