@@ -9,7 +9,6 @@ from machine import Pin, UART, ADC
 # If a melody is not specified, a random melody will be played
 ZIMBEL_MELODY = ''
 # ZIMBEL_MELODY = 'cdfgacgdcafgcadf'
-tempo = 300 # Default value (bpm) - sounds best at 300 bpm
 
 
 # FOR DEBUGGING ONLY
@@ -36,6 +35,8 @@ bells = {
     'a': bell_a,
     'c': bell_c
 }
+# initialize all weights to 1 for use with weighted random note picker
+note_weights = {key: 1 for key in bells.keys()}
 
 midi_uart = UART(0, baudrate=31250, tx=Pin(0), rx=Pin(1))
 star_uart = UART(1, baudrate=9600, tx=Pin(4))
@@ -50,6 +51,7 @@ zimbel_button_state = False
 
 control_knob = ADC(26)
 volume = 0 # Default value
+tempo = 300 # Default value (bpm) - sounds best at 300 bpm
 
 
 # Modes
@@ -68,7 +70,6 @@ zimbel_button_lamp.value(zimbel_state)
 zimbel_is_prepared = False
 stops_on = False
 zimbel_button_blinking = False
-last_note_played = None
 
 # Midi trigger variables
 
@@ -478,14 +479,54 @@ async def play_melody():
             await play_note(note)
 
 
+def get_random_note():
+    global note_weights
+
+    # pick a random note whose weight is not 0 to avoid repeats
+    available_notes = [note for note, weight in note_weights.items() if weight != 0]
+    random_note = random.choice(available_notes)
+
+    # assign the picked note weight to 0
+    note_weights[random_note] = 0
+
+    # reset the weight of all other notes to 1
+    for note in note_weights:
+        if note != random_note:
+            note_weights[note] = 1
+
+    return random_note
+
+
+def get_random_note_by_weight():
+    global note_weights
+
+    # create a weighted list where each note appears as many times as its weight
+    # exclude notes with a weight of 0 to avoid repeats
+    weighted_list_of_notes = [note for note, weight in note_weights.items() for _ in range(weight) if weight > 0]
+
+    # pick a random note from the weighted list
+    random_note = random.choice(weighted_list_of_notes)
+
+    # assign the picked note weight to 0 or less
+    # assigning to 0 will allow all 4 bells to be picked from
+    # assigning to -1 will allow the 3 oldest bells to be picked from
+    # assigning to -2 will allow the 2 oldest bells to be picked from
+    # assigning to -3 forces the oldest bell to be picked, inherently removing the randomness
+    # -3 and lower should not be used
+    note_weights[random_note] = -1
+
+    # increase the weight of all other notes by 1
+    for note in note_weights:
+        if note != random_note:
+            note_weights[note] += 1
+    
+    return random_note
+
+
 async def play_random_melody():
-    global zimbel_state, bells, last_note_played
+    global zimbel_state
 
-    random_note = random.choice(list(bells.keys()))
-
-    # Prevent the same note from being played twice in a row
-    while random_note == last_note_played:
-        random_note = random.choice(list(bells.keys()))
+    random_note = get_random_note_by_weight()
 
     if zimbel_state:
         await play_note(random_note)
@@ -517,7 +558,7 @@ async def _():
 
 
 async def play_note(note, num_beats=1, tempo=tempo):
-    global BELLS_ENABLED, volume, last_note_played
+    global BELLS_ENABLED, volume
 
     beat_duration_in_seconds = (60 / tempo) * num_beats
     strike_duration_in_seconds = volume * 0.001
@@ -529,8 +570,6 @@ async def play_note(note, num_beats=1, tempo=tempo):
     
     # print(f'Sleeping for {sleep_duration_in_seconds} seconds')
     await uasyncio.sleep(sleep_duration_in_seconds)
-
-    last_note_played = note
 
 
 async def strike_bell(bell, strike_duration_in_ms):
