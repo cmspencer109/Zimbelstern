@@ -537,13 +537,13 @@ async def strike_bell(bell, strike_duration_in_ms):
     global pico_led
     
     bell.on()
-    pico_led.on()
+    # pico_led.on() For testing
 
     # print(f'Striking bell for {strike_duration_in_ms} ms')
     await uasyncio.sleep_ms(strike_duration_in_ms)
     
     bell.off()
-    pico_led.off()
+    # pico_led.off() For testing
 
 
 async def star_loop():
