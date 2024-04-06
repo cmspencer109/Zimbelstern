@@ -5,10 +5,11 @@ import random
 from machine import Pin, UART, ADC
 
 
-ZIMBEL_MELODY = 'cdfgacgdcafgcadf'
 
-# Setting this to True will override the melody with an infinite, random, non-repeating sequence of notes
-RANDOM_MELODY = True
+# If a melody is not specified, a random melody will be played
+ZIMBEL_MELODY = ''
+# ZIMBEL_MELODY = 'cdfgacgdcafgcadf'
+tempo = 300 # Default value (bpm) - sounds best at 300 bpm
 
 
 # FOR DEBUGGING ONLY
@@ -49,7 +50,6 @@ zimbel_button_state = False
 
 control_knob = ADC(26)
 volume = 0 # Default value
-tempo = 300 # Default value (bpm)
 
 
 # Modes
@@ -343,11 +343,14 @@ async def midi_loop():
             elif current_mode == PROGRAM_MODE:
                 if is_program_change(midi_bytes):
                     save_midi_trigger(midi_bytes)
+                    change_mode(ZIMBEL_MODE)
                 elif is_control_change(midi_bytes):
                     save_midi_trigger(midi_bytes)
+                    change_mode(ZIMBEL_MODE)
+                
+                # if some other midi message
+                # do nothing
 
-                change_mode(ZIMBEL_MODE)
-        
         # Yield control to event loop
         await uasyncio.sleep_ms(YIELD_TIME)
 
@@ -440,7 +443,7 @@ def get_volume():
     global control_knob
 
     min_value = 15
-    max_value = 50
+    max_value = 40
 
     pot_value = control_knob.read_u16()
     scaled_value = int(min_value + (pot_value / 65535) * (max_value - min_value))
@@ -458,7 +461,7 @@ async def bell_loop():
 
     while True:
         if zimbel_state:
-            if ZIMBEL_MELODY and not RANDOM_MELODY:
+            if ZIMBEL_MELODY:
                 await play_melody()
             else:
                 await play_random_melody()
@@ -468,7 +471,7 @@ async def bell_loop():
 
 
 async def play_melody():
-    global zimbel_state
+    global zimbel_state, ZIMBEL_MELODY
 
     for note in ZIMBEL_MELODY:
         if zimbel_state:
@@ -553,7 +556,7 @@ async def star_loop():
             star_byte = b'\xFF'
             star_uart.write(star_byte)
             # print(f'Sent {star_byte} to star uart')
-            await uasyncio.sleep_ms(100)
+            await uasyncio.sleep_ms(10)
         
         # Yield control to event loop
         await uasyncio.sleep_ms(YIELD_TIME)
