@@ -255,7 +255,7 @@ def hex_to_bits(hex_number, total_width=8):
     return '0' * (total_width - len(binary_representation)) + binary_representation
 
 
-def is_sublist(inner_list, outer_list):
+def is_subsequence(inner_list, outer_list):
     for i in range(len(outer_list) - len(inner_list) + 1):
         if outer_list[i:i+len(inner_list)] == inner_list:
             return True
@@ -268,7 +268,7 @@ def bytes_match_trigger(input_bytes):
     print(f'Checking if input bytes match trigger')
     print(f'Input: {input_bytes}\nTrigger: {midi_trigger_bytes}')
 
-    if is_sublist(midi_trigger_bytes, input_bytes) and midi_trigger_bytes != []:
+    if is_subsequence(midi_trigger_bytes, input_bytes) and midi_trigger_bytes != []:
         print(f'Match found')
         return True
     else:
