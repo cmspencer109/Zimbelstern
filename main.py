@@ -63,6 +63,7 @@ current_mode = ZIMBEL_MODE
 
 # Define and assign initial states
 
+zimbel_start_time = -1
 zimbel_button_clock = -1
 prepare_button_clock = -1
 zimbel_state = False
@@ -95,28 +96,50 @@ DEBOUNCE_TIME = 100
 YIELD_TIME = 1
 
 
-def zimbel_on():
-    global zimbel_state, current_mode
+# log message will be cleared and reused after writing the log to a file
+log_message = []
+
+
+def zimbel_on(start_method = None):
+    global zimbel_state, current_mode, zimbel_start_time
+
     if not zimbel_state and current_mode == 'ZIMBEL_MODE':
         zimbel_state = True
         zimbel_button_lamp.value(True)
+        zimbel_start_time = utime.time()
+
+        # logging
+        log_message.append(start_method)
+        
         print('Zimbel on')
         prepare_zimbel_off()
 
 
-def zimbel_off():
-    global zimbel_state
+def zimbel_off(stop_method = None):
+    global zimbel_state, tempo, volume
+
     if zimbel_state:
         zimbel_state = False
         zimbel_button_lamp.value(False)
+        
+        # logging
+        log_message.append(stop_method)
+        zimbel_run_time = utime.time() - zimbel_start_time
+        log_message.append(f'{zimbel_run_time} seconds')
+        log_message.append(f'{tempo} bpm')
+        log_message.append(f'{volume} ms')
+        save_log_message()
+
         print('Zimbel off')
         prepare_zimbel_off()
 
 
 def prepare_zimbel_on():
-    global zimbel_is_prepared, current_mode
+    global zimbel_state, zimbel_is_prepared, current_mode
+
     if not zimbel_is_prepared and current_mode == 'ZIMBEL_MODE':
-        zimbel_off()
+        if zimbel_state:
+            zimbel_off('prepare piston')
         zimbel_is_prepared = True
         prepare_button_lamp.value(True)
         print('Prepare on')
@@ -139,7 +162,7 @@ def change_mode(new_mode):
         print('Mode changed to', new_mode)
         if new_mode == PROGRAM_MODE:
             # Actions to perform when entering program mode:
-            zimbel_off()
+            zimbel_off('program mode')
         current_mode = new_mode
 
 
@@ -282,7 +305,7 @@ def all_stops_off_rodgers(input_bytes):
 
 
 async def midi_loop():
-    global current_mode, zimbel_is_prepared, midi_trigger_bytes, midi_trigger_filename, stops_on
+    global current_mode, zimbel_is_prepared, midi_trigger_bytes, midi_trigger_filename, stops_on, log_message
 
     while True:
         if midi_uart.any():
@@ -304,9 +327,9 @@ async def midi_loop():
                 if is_program_change(midi_bytes):
                     print(f'Program Change: {midi_bytes}')
                     if bytes_match_trigger(midi_bytes):
-                        zimbel_on()
+                        zimbel_on('midi - registration piston')
                     else:
-                        zimbel_off()
+                        zimbel_off('midi - registration piston')
 
                 # if control change (Used by midi coupler thumb pistons on the organ)
                 # One press to turn on, another press to turn off (behaves like a toggle)
@@ -315,9 +338,9 @@ async def midi_loop():
                     if bytes_match_trigger(midi_bytes):
                         # Toggle zimbel on or off
                         if zimbel_state:
-                            zimbel_off()
+                            zimbel_off('midi - toggle piston')
                         else:
-                            zimbel_on()
+                            zimbel_on('midi - toggle piston')
 
                 # if sysex (Used by Rodgers organs to send stop state messages)
                 # Used to read the state of the stops to see if stops are on or off
@@ -332,12 +355,12 @@ async def midi_loop():
                 # if zimbel is prepared, stops are on, and a key is pressed
                 if zimbel_is_prepared and stops_on and is_note_on(midi_bytes):
                     print('Zimbel is prepared and note on')
-                    zimbel_on()
+                    zimbel_on('midi - prepare piston')
 
                 # if general cancel
                 if midi_bytes == [203, 19]:
                     print('General Cancel')
-                    zimbel_off()
+                    zimbel_off('general cancel')
                     stops_on = False
                     continue
 
@@ -387,9 +410,9 @@ async def zimbel_button_loop():
                 
                 # Toggle zimbel state after button release
                 if zimbel_state:
-                    zimbel_off()
+                    zimbel_off('zimbel piston')
                 else:
-                    zimbel_on()
+                    zimbel_on('zimbel piston')
         
         # Yield control to event loop
         await uasyncio.sleep_ms(YIELD_TIME)
@@ -535,8 +558,10 @@ async def play_random_melody():
 async def _():
     global zimbel_button_state, prepare_button_state
 
-    zimbel_off()
+    zimbel_off('easter egg')
     prepare_zimbel_off()
+
+    save_log_message(specific_message='easter egg played')
 
     print('''
     For all the saints who from their labors rest,
@@ -615,6 +640,35 @@ def setup():
     # load_midi_trigger_from_file()
     
     print('Zimbelstern ready')
+
+
+def save_log_message(specific_message = None):
+    global log_message
+
+    # Create log file if it doesn't exist
+    log_filename = 'zimbel_log.csv'
+    headers = 'date,start_method,stop_method,duration,tempo,volume\n'
+    if log_filename not in uos.listdir():
+        with open(log_filename, 'w') as file:
+            file.write(headers)
+    
+    current_time = utime.localtime()
+    formatted_time = "{:02d}/{:02d}/{} {:02d}:{:02d}".format(current_time[2], current_time[1], current_time[0], current_time[3], current_time[4])
+    
+    if specific_message:
+        specific_message = f'{formatted_time},{specific_message}\n'
+        with open(log_filename, 'a') as file:
+            file.write(specific_message)
+        print(f'Logged specific message: {specific_message}')
+        return
+    
+    if log_message:
+        log_message.insert(0, formatted_time)
+        log_message_as_csv_str = ','.join(log_message) + '\n'
+        with open(log_filename, 'a') as file:
+            file.write(log_message_as_csv_str)
+        print(f'Logged: {log_message_as_csv_str}')
+        log_message = []
 
 
 async def main():
