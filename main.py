@@ -610,7 +610,9 @@ def setup():
     print(f'Volume: {volume}')
     print(f'Tempo: {tempo}')
 
-    load_midi_trigger_from_file()
+    # Disable loading from file for now
+    # this way unplugging and plugging back in will clear trigger
+    # load_midi_trigger_from_file()
     
     print('Zimbelstern ready')
 
