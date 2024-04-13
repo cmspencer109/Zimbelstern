@@ -579,19 +579,22 @@ async def _():
     ]
 
     for note in hymn:
-        await play_note(note=note[0], num_beats=note[1], tempo=120)
+        await play_note(note=note[0], num_beats=note[1], override_tempo=120)
 
 
-async def play_note(note, num_beats=1, tempo=tempo):
-    global BELLS_ENABLED, volume
+async def play_note(note, num_beats=1, override_tempo=None, override_volume=None):
+    global BELLS_ENABLED, tempo, volume
 
-    beat_duration_in_seconds = (60 / tempo) * num_beats
-    strike_duration_in_seconds = volume * 0.001
+    working_tempo = override_tempo if override_tempo else tempo
+    working_volume = override_volume if override_volume else volume
+
+    beat_duration_in_seconds = (60 / working_tempo) * num_beats
+    strike_duration_in_seconds = working_volume * 0.001
     sleep_duration_in_seconds = beat_duration_in_seconds - strike_duration_in_seconds
 
     # print(f'Playing {note.upper()} for {strike_duration_in_seconds} seconds')
     if BELLS_ENABLED:
-        await strike_bell(bells[note], volume)
+        await strike_bell(bells[note], working_volume)
     
     # print(f'Sleeping for {sleep_duration_in_seconds} seconds')
     await uasyncio.sleep(sleep_duration_in_seconds)
