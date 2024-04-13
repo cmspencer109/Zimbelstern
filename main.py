@@ -95,6 +95,11 @@ DEBOUNCE_TIME = 100
 # Used to yield control to the event loop (ms)
 YIELD_TIME = 1
 
+# Set volume range of potentiometer
+# Value is the amount of time the electromagnet is on (ms)
+MIN_VOLUME = 15
+MAX_VOLUME = 40
+
 
 # log message will be cleared and reused after writing the log to a file
 log_message = []
@@ -464,13 +469,10 @@ async def control_knob_loop():
 
 
 def get_volume():
-    global control_knob
-
-    min_value = 15
-    max_value = 40
+    global control_knob, MIN_VOLUME, MAX_VOLUME
 
     pot_value = control_knob.read_u16()
-    scaled_value = int(min_value + (pot_value / 65535) * (max_value - min_value))
+    scaled_value = int(MIN_VOLUME + (pot_value / 65535) * (MAX_VOLUME - MIN_VOLUME))
 
     return scaled_value
 
@@ -602,13 +604,11 @@ async def play_note(note, num_beats=1, override_tempo=None, override_volume=None
 
 async def strike_bell(bell, strike_duration_in_ms):
     global pico_led
-    
-    bell.on()
-    # pico_led.on() For testing
 
     # print(f'Striking bell for {strike_duration_in_ms} ms')
+    # pico_led.on() For testing
+    bell.on()
     await uasyncio.sleep_ms(strike_duration_in_ms)
-    
     bell.off()
     # pico_led.off() For testing
 
