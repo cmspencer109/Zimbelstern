@@ -9,7 +9,8 @@ from machine import Pin, UART, ADC
 # If a melody is not specified, a random melody will be played
 ZIMBEL_MELODY = ''
 # ZIMBEL_MELODY = 'cdfgacgdcafgcadf'
-# ZIMBEL_MELODY = 'dfgac'
+# ZIMBEL_MELODY = 'dfgac' # ascending
+# ZIMBEL_MELODY = 'cagfd' # descending
 
 
 # FOR DEBUGGING ONLY
