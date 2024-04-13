@@ -9,6 +9,7 @@ from machine import Pin, UART, ADC
 # If a melody is not specified, a random melody will be played
 ZIMBEL_MELODY = ''
 # ZIMBEL_MELODY = 'cdfgacgdcafgcadf'
+# ZIMBEL_MELODY = 'dfgac'
 
 
 # FOR DEBUGGING ONLY
@@ -51,7 +52,7 @@ zimbel_button_state = False
 
 control_knob = ADC(26)
 volume = 0 # Default value
-tempo = 300 # Default value (bpm) - sounds best at 300 bpm
+tempo = 500 # Default value (bpm)
 
 
 # Modes
@@ -538,7 +539,7 @@ def get_random_note_by_weight():
     # assigning to -2 will allow the 2 oldest bells to be picked from
     # assigning to -3 forces the oldest bell to be picked, inherently removing the randomness
     # -3 and lower should not be used
-    note_weights[random_note] = -1
+    note_weights[random_note] = -2
 
     # increase the weight of all other notes by 1
     for note in note_weights:
@@ -551,9 +552,8 @@ def get_random_note_by_weight():
 async def play_random_melody():
     global zimbel_state
 
-    random_note = get_random_note_by_weight()
-
     if zimbel_state:
+        random_note = get_random_note_by_weight()
         await play_note(random_note)
 
 
@@ -662,7 +662,7 @@ def save_log_message(specific_message = None):
         specific_message = f'{formatted_time},{specific_message}\n'
         with open(log_filename, 'a') as file:
             file.write(specific_message)
-        print(f'Logged specific message: {specific_message}')
+        # print(f'Logged specific message: {specific_message}')
         return
     
     if log_message:
@@ -670,7 +670,7 @@ def save_log_message(specific_message = None):
         log_message_as_csv_str = ','.join(log_message) + '\n'
         with open(log_filename, 'a') as file:
             file.write(log_message_as_csv_str)
-        print(f'Logged: {log_message_as_csv_str}')
+        # print(f'Logged: {log_message_as_csv_str}')
         log_message = []
 
 
