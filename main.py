@@ -1,27 +1,29 @@
-import uasyncio
-import uos
-import utime
+import asyncio as asyncio
+import os as os
+import time as time
 import random
 from machine import Pin, UART, ADC
-
+from digital_bell import play_digital_bell
 
 
 # If a melody is not specified, a random melody will be played
 ZIMBEL_MELODY = ''
-ZIMBEL_MELODY = 'cdfgacgdcafgcadf'
+# ZIMBEL_MELODY = 'cdfgacgdcafgcadf'
 # ZIMBEL_MELODY = 'dfgac' # ascending
-# ZIMBEL_MELODY = 'cagfd' # descending
+# ZIMBEL_MELODY = 'cagfd' # descending 
 # ZIMBEL_MELODY = 'dfgacagf' # ascending and descending
+# ZIMBEL_MELODY = 'zdefgabc'
+# ZIMBEL_MELODY = 'cbagfdez'
 
 
 # Optional fade in for volume and tempo
-FADE_VOLUME_START = False
+FADE_VOLUME_START = True
 FADE_TEMPO_START = False
-FADE_IN_DURATION = 3 # seconds
+STARTING_VOLUME = 12 # ms
 
-
-# Set the tempo
-tempo = 300 # Default value (bpm)
+FADE_IN_DURATION = 2 # seconds
+tempo = 290 # bpm
+STARTING_TEMPO = tempo-20 # bpm
 
 
 # FOR DEBUGGING ONLY
@@ -42,6 +44,9 @@ bell_a = Pin(8, Pin.OUT)
 bell_c = Pin(7, Pin.OUT)
 
 bells = {
+    # 'z': Pin(-1, Pin.OUT),
+    # 'e': Pin(-1, Pin.OUT),
+    # 'b': Pin(-1, Pin.OUT),
     'd': bell_d,
     'f': bell_f,
     'g': bell_g,
@@ -123,21 +128,26 @@ MAX_VOLUME = 40
 log_message = []
 
 
+async def sleep_ms(ms):
+    seconds = ms / 1000
+    await asyncio.sleep(seconds)
+
+
 def get_spread(min_value, max_value, num_steps):
     step = (max_value - min_value) / (num_steps - 1)
     return [min_value + step * i for i in range(num_steps)]
 
 
 def zimbel_on(start_method = None):
-    global zimbel_state, current_mode, zimbel_start_time, faded_volumes, faded_tempos
-
+    global zimbel_state, current_mode, zimbel_start_time, faded_volumes, faded_tempos, STARTING_VOLUME, STARTING_TEMPO
+    
     if not zimbel_state and current_mode == 'ZIMBEL_MODE':
-        faded_volumes = get_spread(12, volume, num_strikes_to_fade)
-        faded_tempos = get_spread(250, tempo, num_strikes_to_fade)
+        faded_volumes = get_spread(STARTING_VOLUME, volume, num_strikes_to_fade)
+        faded_tempos = get_spread(STARTING_TEMPO, tempo, num_strikes_to_fade)
 
         zimbel_state = True
         zimbel_button_lamp.value(True)
-        zimbel_start_time = utime.time()
+        zimbel_start_time = time.time()
 
         # logging
         log_message.append(start_method)
@@ -156,7 +166,7 @@ def zimbel_off(stop_method = None):
         
         # logging
         log_message.append(stop_method)
-        zimbel_run_time = utime.time() - zimbel_start_time
+        zimbel_run_time = time.time() - zimbel_start_time
         log_message.append(f'{zimbel_run_time} seconds')
         log_message.append(f'{tempo} bpm')
         log_message.append(f'{volume} ms')
@@ -216,7 +226,7 @@ def save_midi_trigger(midi_bytes):
 def load_midi_trigger_from_file():
     global midi_trigger_bytes, midi_trigger_filename
     
-    if midi_trigger_filename in uos.listdir():
+    if midi_trigger_filename in os.listdir():
         with open(midi_trigger_filename, 'rb') as file:
             midi_trigger_bytes = list(file.read())
 
@@ -232,12 +242,12 @@ async def blink():
         zimbel_button_blinking = True
         print('blink called')
 
-        start_time = utime.ticks_ms()
+        start_time = time.ticks_ms()
 
         # Loop until duration has been reached or the mode changes of program mode
-        while utime.ticks_diff(utime.ticks_ms(), start_time) < BLINK_DURATION*1000 and current_mode == PROGRAM_MODE:
+        while time.ticks_diff(time.ticks_ms(), start_time) < BLINK_DURATION*1000 and current_mode == PROGRAM_MODE:
             zimbel_button_lamp.value(not zimbel_button_lamp.value())
-            await uasyncio.sleep_ms(200)
+            await sleep_ms(200)
         # End loop with led off
         zimbel_button_lamp.value(False)
         
@@ -408,7 +418,7 @@ async def midi_loop():
                 # do nothing
 
         # Yield control to event loop
-        await uasyncio.sleep_ms(YIELD_TIME)
+        await sleep_ms(YIELD_TIME)
 
 
 async def zimbel_button_loop():
@@ -419,7 +429,7 @@ async def zimbel_button_loop():
             if not zimbel_button_state:
                 #print('Button pressed')
                 zimbel_button_state = True
-                zimbel_button_clock = utime.ticks_ms()
+                zimbel_button_clock = time.ticks_ms()
                 
                 # Toggle button lamp on button press
                 if zimbel_state:
@@ -428,10 +438,10 @@ async def zimbel_button_loop():
                     zimbel_button_lamp.value(True)
                 
                 # Debounce after press
-                await uasyncio.sleep_ms(DEBOUNCE_TIME)
+                await sleep_ms(DEBOUNCE_TIME)
             
             # Check if the button has been held long enough to enter program mode
-            if utime.ticks_diff(utime.ticks_ms(), zimbel_button_clock) >= BUTTON_HOLD_TIME*1000:
+            if time.ticks_diff(time.ticks_ms(), zimbel_button_clock) >= BUTTON_HOLD_TIME*1000:
                 change_mode(PROGRAM_MODE)
                 await blink()
             
@@ -447,7 +457,7 @@ async def zimbel_button_loop():
                     zimbel_on('zimbel piston')
         
         # Yield control to event loop
-        await uasyncio.sleep_ms(YIELD_TIME)
+        await sleep_ms(YIELD_TIME)
 
 
 async def prepare_button_loop():
@@ -458,7 +468,7 @@ async def prepare_button_loop():
             if not prepare_button_state:
                 # print('Prepare button pressed')
                 prepare_button_state = True
-                prepare_button_clock = utime.ticks_ms()
+                prepare_button_clock = time.ticks_ms()
                 
                 # Toggle zimbel prepared state
                 if zimbel_is_prepared:
@@ -467,10 +477,10 @@ async def prepare_button_loop():
                     prepare_zimbel_on()
 
                 # Debounce after press
-                await uasyncio.sleep_ms(DEBOUNCE_TIME)
+                await sleep_ms(DEBOUNCE_TIME)
 
             # Do something special if the prepare button is held for 10 seconds...
-            if utime.ticks_diff(utime.ticks_ms(), prepare_button_clock) >= 10000:
+            if time.ticks_diff(time.ticks_ms(), prepare_button_clock) >= 10000:
                 await _()
             
         else:  # Button is not being pressed
@@ -479,7 +489,7 @@ async def prepare_button_loop():
                 prepare_button_state = False
         
         # Yield control to event loop
-        await uasyncio.sleep_ms(YIELD_TIME)
+        await sleep_ms(YIELD_TIME)
 
 
 async def control_knob_loop():
@@ -492,7 +502,7 @@ async def control_knob_loop():
             # print(f'Volume: {volume}')
 
         # Yield control to event loop
-        await uasyncio.sleep_ms(YIELD_TIME)
+        await sleep_ms(YIELD_TIME)
 
     # For testing tempo control
     # while True:
@@ -502,7 +512,7 @@ async def control_knob_loop():
     #         print(f'tempo: {tempo}')
 
     #     # Yield control to event loop
-    #     await uasyncio.sleep_ms(YIELD_TIME)
+    #     await sleep_ms(YIELD_TIME)
 
 
 def get_volume():
@@ -530,17 +540,18 @@ def get_tempo():
 
 
 async def bell_loop():
-    global zimbel_state
+    global zimbel_state, current_strike_counter
 
     while True:
         if zimbel_state:
             if ZIMBEL_MELODY:
                 await play_melody()
+                # await sleep_ms(50)
             else:
                 await play_random_melody()
         
         # Yield control to event loop
-        await uasyncio.sleep_ms(YIELD_TIME)
+        await sleep_ms(YIELD_TIME)
 
 
 async def play_melody():
@@ -568,7 +579,8 @@ async def play_random_melody():
             override_tempo = None
         
         random_note = get_random_note_by_weight()
-        await play_note(random_note, override_tempo=override_tempo)
+        random_note_2 = get_random_note_by_weight()
+        await play_note(random_note, random_note_2, override_tempo=override_tempo)
 
 
 def get_random_note():
@@ -605,7 +617,7 @@ def get_random_note_by_weight():
     # assigning to -2 will allow the 2 oldest bells to be picked from
     # assigning to -3 forces the oldest bell to be picked, inherently removing the randomness
     # -3 and lower should not be used
-    note_weights[random_note] = -2
+    note_weights[random_note] = -3
 
     # increase the weight of all other notes by 1
     for note in note_weights:
@@ -615,7 +627,7 @@ def get_random_note_by_weight():
     return random_note
 
 
-async def play_note(note, num_beats=1, override_tempo=None, override_volume=None):
+async def play_note(note, note_2=None, num_beats=1, override_tempo=None, override_volume=None):
     global BELLS_ENABLED, tempo, volume, FADE_VOLUME_START, current_strike_counter, faded_volumes
 
     working_tempo = override_tempo if override_tempo else tempo
@@ -629,11 +641,15 @@ async def play_note(note, num_beats=1, override_tempo=None, override_volume=None
     if BELLS_ENABLED:
         if FADE_VOLUME_START and current_strike_counter < num_strikes_to_fade:
             working_volume = int(faded_volumes[current_strike_counter])
-        await strike_bell(bells[note], working_volume)
+        # await strike_bell(bells[note], working_volume)
+        await play_digital_bell(note, working_volume)
+        if note_2:
+            await sleep_ms(random.randint(10,30)) # 20
+            await play_digital_bell(note_2, 12)
         current_strike_counter += 1
     
     # print(f'Sleeping for {sleep_duration_in_seconds} seconds')
-    await uasyncio.sleep(sleep_duration_in_seconds)
+    await asyncio.sleep(sleep_duration_in_seconds)
 
 
 async def strike_bell(bell, strike_duration_in_ms):
@@ -642,7 +658,7 @@ async def strike_bell(bell, strike_duration_in_ms):
     print(f'Striking bell for {strike_duration_in_ms} ms')
     # pico_led.on() For testing
     bell.on()
-    await uasyncio.sleep_ms(strike_duration_in_ms)
+    await sleep_ms(strike_duration_in_ms)
     bell.off()
     # pico_led.off() For testing
 
@@ -657,17 +673,19 @@ async def star_loop():
             star_byte = b'\xFF'
             star_uart.write(star_byte)
             # print(f'Sent {star_byte} to star uart')
-            await uasyncio.sleep_ms(10)
+            await sleep_ms(10)
         
         # Yield control to event loop
-        await uasyncio.sleep_ms(YIELD_TIME)
+        await sleep_ms(YIELD_TIME)
 
 
 async def _():
-    global zimbel_button_state, prepare_button_state
+    global zimbel_button_state, prepare_button_state, FADE_VOLUME_START
 
     zimbel_off('easter egg')
     prepare_zimbel_off()
+    old_fade_volume_start_state = FADE_VOLUME_START
+    FADE_VOLUME_START = False
 
     save_log_message(specific_message='easter egg played')
 
@@ -688,6 +706,8 @@ async def _():
 
     for note in hymn:
         await play_note(note=note[0], num_beats=note[1], override_tempo=120)
+    
+    FADE_VOLUME_START = old_fade_volume_start_state
 
 
 def setup():
@@ -712,11 +732,11 @@ def save_log_message(specific_message = None):
     # Create log file if it doesn't exist
     log_filename = 'zimbel_log.csv'
     headers = 'date,start_method,stop_method,duration,tempo,volume\n'
-    if log_filename not in uos.listdir():
+    if log_filename not in os.listdir():
         with open(log_filename, 'w') as file:
             file.write(headers)
     
-    current_time = utime.localtime()
+    current_time = time.localtime()
     formatted_time = "{:02d}/{:02d}/{} {:02d}:{:02d}".format(current_time[2], current_time[1], current_time[0], current_time[3], current_time[4])
     
     if specific_message:
@@ -737,16 +757,19 @@ def save_log_message(specific_message = None):
 
 async def main():
     setup()
+    zimbel_on() # for testing
     
-    midi_loop_task = uasyncio.create_task(midi_loop())
-    zimbel_button_loop_task = uasyncio.create_task(zimbel_button_loop())
-    prepare_button_loop_task = uasyncio.create_task(prepare_button_loop())
-    control_knob_loop_task = uasyncio.create_task(control_knob_loop())
-    star_loop_task = uasyncio.create_task(star_loop())
-    bell_loop_task = uasyncio.create_task(bell_loop())
+    tasks = [
+        asyncio.create_task(midi_loop()),
+        asyncio.create_task(zimbel_button_loop()),
+        asyncio.create_task(prepare_button_loop()),
+        asyncio.create_task(control_knob_loop()),
+        asyncio.create_task(star_loop()),
+        asyncio.create_task(bell_loop())
+    ]
 
-    await uasyncio.gather(midi_loop_task, zimbel_button_loop_task, prepare_button_loop_task, 
-                          control_knob_loop_task, star_loop_task, bell_loop_task)
+    await asyncio.gather(*tasks)
 
 
-uasyncio.run(main())
+if __name__ == '__main__':
+    asyncio.run(main())
