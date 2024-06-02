@@ -7,14 +7,10 @@ from machine import Pin, UART, ADC
 # If a melody is not specified, a random melody will be played
 DELAY_BETWEEN_MELODY_REPEAT = False
 ZIMBEL_MELODY = ''
-# ZIMBEL_MELODY = 'cdfgacgdcafgcadf'
+# ZIMBEL_MELODY = 'cdfgacgdcafgcadf' # 16 note pattern
 # ZIMBEL_MELODY = 'dfgac' # ascending
 # ZIMBEL_MELODY = 'cagfd' # descending 
 # ZIMBEL_MELODY = 'dfgacagf' # ascending and descending
-# Full octave
-# ZIMBEL_MELODY = 'zdefgabc'
-# ZIMBEL_MELODY = 'zdfg'
-# ZIMBEL_MELODY = 'cbagfedz'
 
 FADE_VOLUME_START = True
 FADE_TEMPO_START = True
@@ -31,8 +27,6 @@ STAR_ENABLED = True
 
 # Define board connections
 
-pico_led = Pin(25, Pin.OUT)
-
 bell_d = Pin(11, Pin.OUT)
 bell_f = Pin(10, Pin.OUT)
 bell_g = Pin(9, Pin.OUT)
@@ -40,16 +34,13 @@ bell_a = Pin(8, Pin.OUT)
 bell_c = Pin(7, Pin.OUT)
 
 bells = {
-    # 'z': Pin(-1, Pin.OUT), # virtual bells for testing only
-    # 'e': Pin(-1, Pin.OUT), # virtual bells for testing only
-    # 'b': Pin(-1, Pin.OUT), # virtual bells for testing only
     'd': bell_d,
     'f': bell_f,
     'g': bell_g,
     'a': bell_a,
     'c': bell_c
 }
-# initialize all weights to 1 for use with weighted random note picker
+
 note_weights = {key: 1 for key in bells.keys()}
 
 midi_uart = UART(0, baudrate=31250, tx=Pin(0), rx=Pin(1))
@@ -63,8 +54,8 @@ zimbel_button = Pin(12, Pin.IN, Pin.PULL_UP)
 zimbel_button_lamp = Pin(15, Pin.OUT)
 zimbel_button_state = False
 
-control_knob = ADC(26)
-volume = 0 # Default value
+volume_knob = ADC(26)
+volume = 0
 
 beats_per_second = tempo // 60
 num_beats_to_fade = int(beats_per_second * FADE_IN_DURATION)
@@ -77,7 +68,7 @@ faded_tempos = []
 prepare_button_clock = -1
 zimbel_state = False
 zimbel_playing = False
-zimbel_button_lamp.value(zimbel_state)
+zimbel_button_lamp.value(False)
 zimbel_is_prepared = False
 stops_on = False
 
@@ -92,7 +83,7 @@ DEBOUNCE_TIME = 100
 YIELD_TIME = 1
 
 # Set volume range of potentiometer
-# Value is the amount of time the electromagnet is on (ms)
+# Value is the amount of time each electromagnet is powered on for (ms)
 ABSOLUTE_MIN_VOLUME = 12
 MIN_VOLUME = 15
 MAX_VOLUME = 40
@@ -112,7 +103,6 @@ def zimbel_on():
 
         zimbel_state = True
         zimbel_button_lamp.value(True)
-        
         print('Zimbel on')
         prepare_zimbel_off()
 
@@ -124,17 +114,15 @@ def zimbel_off():
         zimbel_state = False
         zimbel_playing = False
         zimbel_button_lamp.value(False)
-
         print('Zimbel off')
         prepare_zimbel_off()
 
 
 def prepare_zimbel_on():
-    global zimbel_state, zimbel_is_prepared
+    global zimbel_is_prepared
 
     if not zimbel_is_prepared:
-        if zimbel_state:
-            zimbel_off()
+        zimbel_off()
         zimbel_is_prepared = True
         prepare_button_lamp.value(True)
         print('Prepare on')
@@ -148,13 +136,12 @@ def prepare_zimbel_off():
 
 
 def is_note_on(midi_bytes):
-    # Check if the list has at least 3 elements
     if len(midi_bytes) < 3:
         return False
 
-    # Check if the status byte indicates a Note On message (status byte starts with '1001' in binary)
+    # Check if the status byte indicates a Note On message
     if (midi_bytes[0] & 0xF0) == 0x90:
-        # Check if the velocity is greater than 0 (to distinguish Note On from Note Off)
+        # Check if the velocity is greater than 0
         if midi_bytes[2] > 0:
             return True
 
@@ -162,7 +149,6 @@ def is_note_on(midi_bytes):
 
 
 def is_sysex(message_bytes):
-    # Check if the message has at least two bytes
     if len(message_bytes) < 2:
         return False
     
@@ -173,18 +159,6 @@ def is_sysex(message_bytes):
     if start_byte == 0xF0 and end_byte == 0xF7:
         return True
     
-    return False
-
-
-def hex_to_bits(hex_number, total_width=8):
-    binary_representation = bin(hex_number)[2:]
-    return '0' * (total_width - len(binary_representation)) + binary_representation
-
-
-def is_subsequence(inner_list, outer_list):
-    for i in range(len(outer_list) - len(inner_list) + 1):
-        if outer_list[i:i+len(inner_list)] == inner_list:
-            return True
     return False
 
 
@@ -205,22 +179,23 @@ async def midi_loop():
             # Strip out Active Sensing byte if it gets caught in another message
             if midi_bytes[0] == 0xFE: midi_bytes = midi_bytes[1:]
 
-            # if sysex (Used by Rodgers organs to send stop state messages)
+            # Process MIDI message:
+
+            # If SysEx (Used by Rodgers organs to send stop state messages)
             # Used to read the state of the stops to see if stops are on or off
             if is_sysex(midi_bytes):
-                # Only able to read Rodgers sysex messages
-                print(f'SysEx: {midi_bytes}')
+                # Only able to read Rodgers SysEx messages
                 if all_stops_off_rodgers(midi_bytes):
                     stops_on = False
                 else:
                     stops_on = True
 
-            # if zimbel is prepared, stops are on, and a key is pressed
+            # If zimbel is prepared, stops are on, and a key is pressed
             if zimbel_is_prepared and stops_on and is_note_on(midi_bytes):
                 print('Zimbel is prepared and note on')
                 zimbel_on()
 
-            # if general cancel
+            # If general cancel
             if midi_bytes == [203, 19]:
                 print('General Cancel')
                 zimbel_off()
@@ -296,26 +271,19 @@ async def prepare_button_loop():
         await uasyncio.sleep_ms(YIELD_TIME)
 
 
-async def control_knob_loop():
-    global control_knob, volume, tempo
+async def volume_knob_loop():
+    global volume_knob, volume, tempo
 
     while True:
-        new_volume = get_volume()
+        pot_value = volume_knob.read_u16()
+        new_volume = int(MIN_VOLUME + (pot_value / 65535) * (MAX_VOLUME - MIN_VOLUME))
+        
         if new_volume != volume:
             volume = new_volume
             # print(f'Volume: {volume}')
 
         # Yield control to event loop
         await uasyncio.sleep_ms(YIELD_TIME)
-
-
-def get_volume():
-    global control_knob, MIN_VOLUME, MAX_VOLUME
-
-    pot_value = control_knob.read_u16()
-    scaled_value = int(MIN_VOLUME + (pot_value / 65535) * (MAX_VOLUME - MIN_VOLUME))
-
-    return scaled_value
 
 
 async def bell_loop():
@@ -335,32 +303,27 @@ async def bell_loop():
 
 
 async def play_melody():
-    pass
-    # global zimbel_state, ZIMBEL_MELODY, DELAY_BETWEEN_MELODY_REPEAT
+    global zimbel_state, ZIMBEL_MELODY, DELAY_BETWEEN_MELODY_REPEAT
     
-    # beat_counter = 0
-    # start_time = datetime.now()
+    beat_counter = 0
+    start_time = time.ticks_ms()
 
-    # while zimbel_state:
-    #     beat_duration = get_beat_duration(current_beat=beat_counter)
-    #     working_volume = get_working_volume(current_beat=beat_counter)
+    while zimbel_state:
+        beat_duration = get_beat_duration(current_beat=beat_counter)
+        working_volume = get_working_volume(current_beat=beat_counter)
 
-    #     current_time = datetime.now()
-    #     elapsed_time = (current_time - start_time).total_seconds()
+        if time.ticks_diff(time.ticks_ms(), start_time) >= beat_duration*1000:
+            note = ZIMBEL_MELODY[beat_counter % len(ZIMBEL_MELODY)]
+            await strike_bell(note, working_volume)
 
-    #     if elapsed_time >= beat_duration:
-    #         note = ZIMBEL_MELODY[beat_counter % len(ZIMBEL_MELODY)]
-    #         await strike_bell(note, working_volume)
-    #         # await strike_digital_bell(note, working_volume)
+            start_time = time.ticks_ms()
+            beat_counter += 1
 
-    #         start_time = current_time
-    #         beat_counter += 1
-
-    #         if DELAY_BETWEEN_MELODY_REPEAT and (beat_counter % len(ZIMBEL_MELODY) == 0):
-    #             print('Melody finished')
-    #             await uasyncio.sleep_ms(50)
+            if DELAY_BETWEEN_MELODY_REPEAT and (beat_counter % len(ZIMBEL_MELODY) == 0):
+                print('Melody finished')
+                await uasyncio.sleep_ms(50)
         
-    #     await uasyncio.sleep_ms(YIELD_TIME)
+        await uasyncio.sleep_ms(YIELD_TIME)
 
 
 def get_beat_duration(current_beat):
@@ -400,13 +363,11 @@ async def play_random_melody():
             # Play a random note
             random_note = get_random_note_by_weight()
             await strike_bell(random_note, working_volume)
-            # await strike_digital_bell(random_note, working_volume)
 
             # Play a second random note shortly after the first
             # await uasyncio.sleep_ms(random.randint(0,30))
             # random_note = get_random_note_by_weight()
             # await strike_bell(random_note, ABSOLUTE_MIN_VOLUME)
-            # await strike_digital_bell(random_note, ABSOLUTE_MIN_VOLUME)
             
             start_time = time.ticks_ms()
             beat_counter += 1
@@ -459,14 +420,12 @@ def get_random_note_by_weight():
 
 
 async def strike_bell(note, strike_duration_in_ms):
-    global bells, pico_led
+    global bells
 
     print(f'Striking bell for {strike_duration_in_ms} ms')
-    # pico_led.on() For testing
     bells[note].on()
     await uasyncio.sleep_ms(strike_duration_in_ms)
     bells[note].off()
-    # pico_led.off() For testing
 
 
 async def star_loop():
@@ -514,31 +473,17 @@ async def _():
     FADE_VOLUME_START = old_fade_volume_start_state
 
 
-def setup():
-    global volume, tempo
-
-    volume = get_volume()
-
-    print(f'Volume: {volume}')
-    print(f'Tempo: {tempo}')
-    
-    print('Zimbelstern ready')
-
-
 async def main():
-    setup()
-    
     tasks = [
         uasyncio.create_task(midi_loop()),
         uasyncio.create_task(zimbel_button_loop()),
         uasyncio.create_task(prepare_button_loop()),
-        uasyncio.create_task(control_knob_loop()),
-        uasyncio.create_task(star_loop()),
-        uasyncio.create_task(bell_loop())
+        uasyncio.create_task(volume_knob_loop()),
+        uasyncio.create_task(bell_loop()),
+        uasyncio.create_task(star_loop())
     ]
 
     await uasyncio.gather(*tasks)
 
 
-if __name__ == '__main__':
-    uasyncio.run(main())
+uasyncio.run(main())
