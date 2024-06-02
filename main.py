@@ -3,28 +3,39 @@ import os as os
 import time as time
 import random
 from machine import Pin, UART, ADC
-from digital_bell import play_digital_bell
+from datetime import datetime
+from digital_bell import strike_digital_bell
 
 
 # If a melody is not specified, a random melody will be played
+DELAY_BETWEEN_MELODY_REPEAT = False
 ZIMBEL_MELODY = ''
 # ZIMBEL_MELODY = 'cdfgacgdcafgcadf'
 # ZIMBEL_MELODY = 'dfgac' # ascending
 # ZIMBEL_MELODY = 'cagfd' # descending 
 # ZIMBEL_MELODY = 'dfgacagf' # ascending and descending
+# Full octave
 # ZIMBEL_MELODY = 'zdefgabc'
-# ZIMBEL_MELODY = 'cbagfdez'
+# ZIMBEL_MELODY = 'zdfg'
+# ZIMBEL_MELODY = 'cbagfedz'
 
-
-# Optional fade in for volume and tempo
 FADE_VOLUME_START = True
-FADE_TEMPO_START = False
-STARTING_VOLUME = 12 # ms
-
-FADE_IN_DURATION = 2 # seconds
-tempo = 290 # bpm
+FADE_TEMPO_START = True
+FADE_IN_DURATION = 1 # seconds
+tempo = 300 # bpm
 STARTING_TEMPO = tempo-20 # bpm
 
+# FADE_VOLUME_START = True
+# FADE_TEMPO_START = True
+# FADE_IN_DURATION = 2 # seconds
+# tempo = 290 # bpm
+# STARTING_TEMPO = tempo-10 # bpm
+
+# FADE_VOLUME_START = True
+# FADE_TEMPO_START = True
+# FADE_IN_DURATION = 2 # seconds
+# tempo = 260 # bpm
+# STARTING_TEMPO = tempo-10 # bpm
 
 # FOR DEBUGGING ONLY
 # Set to False if needed for disabling certain features
@@ -44,9 +55,9 @@ bell_a = Pin(8, Pin.OUT)
 bell_c = Pin(7, Pin.OUT)
 
 bells = {
-    # 'z': Pin(-1, Pin.OUT),
-    # 'e': Pin(-1, Pin.OUT),
-    # 'b': Pin(-1, Pin.OUT),
+    # 'z': Pin(-1, Pin.OUT), # virtual bells for testing only
+    # 'e': Pin(-1, Pin.OUT), # virtual bells for testing only
+    # 'b': Pin(-1, Pin.OUT), # virtual bells for testing only
     'd': bell_d,
     'f': bell_f,
     'g': bell_g,
@@ -71,8 +82,7 @@ control_knob = ADC(26)
 volume = 0 # Default value
 
 beats_per_second = tempo // 60
-num_strikes_to_fade = int(beats_per_second * FADE_IN_DURATION)
-current_strike_counter = 0
+num_beats_to_fade = int(beats_per_second * FADE_IN_DURATION)
 faded_volumes = []
 faded_tempos = []
 
@@ -90,6 +100,7 @@ zimbel_start_time = -1
 zimbel_button_clock = -1
 prepare_button_clock = -1
 zimbel_state = False
+zimbel_playing = False
 zimbel_button_lamp.value(zimbel_state)
 zimbel_is_prepared = False
 stops_on = False
@@ -99,6 +110,9 @@ zimbel_button_blinking = False
 
 midi_trigger_filename = 'midi_trigger.txt'
 midi_trigger_bytes = []
+TYPE_CONTROL_CHANGE = 'CONTROL_CHANGE'
+TYPE_PROGRAM_CHANGE = 'PROGRAM_CHANGE'
+midi_trigger_type = ''
 
 
 # Define constants
@@ -120,6 +134,7 @@ YIELD_TIME = 1
 
 # Set volume range of potentiometer
 # Value is the amount of time the electromagnet is on (ms)
+ABSOLUTE_MIN_VOLUME = 12
 MIN_VOLUME = 15
 MAX_VOLUME = 40
 
@@ -139,11 +154,11 @@ def get_spread(min_value, max_value, num_steps):
 
 
 def zimbel_on(start_method = None):
-    global zimbel_state, current_mode, zimbel_start_time, faded_volumes, faded_tempos, STARTING_VOLUME, STARTING_TEMPO
+    global zimbel_state, current_mode, zimbel_start_time, faded_volumes, faded_tempos, ABSOLUTE_MIN_VOLUME, STARTING_TEMPO
     
     if not zimbel_state and current_mode == 'ZIMBEL_MODE':
-        faded_volumes = get_spread(STARTING_VOLUME, volume, num_strikes_to_fade)
-        faded_tempos = get_spread(STARTING_TEMPO, tempo, num_strikes_to_fade)
+        faded_volumes = get_spread(ABSOLUTE_MIN_VOLUME, volume, num_beats_to_fade)
+        faded_tempos = get_spread(STARTING_TEMPO, tempo, num_beats_to_fade)
 
         zimbel_state = True
         zimbel_button_lamp.value(True)
@@ -157,11 +172,11 @@ def zimbel_on(start_method = None):
 
 
 def zimbel_off(stop_method = None):
-    global zimbel_state, tempo, volume, current_strike_counter
+    global zimbel_state, zimbel_playing, tempo, volume
 
     if zimbel_state:
-        current_strike_counter = 0
         zimbel_state = False
+        zimbel_playing = False
         zimbel_button_lamp.value(False)
         
         # logging
@@ -366,7 +381,7 @@ async def midi_loop():
                 # if program change (Used by numbered thumb and toe pistons on the organ)
                 # One press to turn on, another press does nothing, 
                 # but a different program change message will turn it off
-                if is_program_change(midi_bytes):
+                if midi_trigger_type == TYPE_PROGRAM_CHANGE and is_program_change(midi_bytes):
                     print(f'Program Change: {midi_bytes}')
                     if bytes_match_trigger(midi_bytes):
                         zimbel_on('midi - registration piston')
@@ -375,7 +390,7 @@ async def midi_loop():
 
                 # if control change (Used by midi coupler thumb pistons on the organ)
                 # One press to turn on, another press to turn off (behaves like a toggle)
-                if is_control_change(midi_bytes):
+                if midi_trigger_type == TYPE_CONTROL_CHANGE and is_control_change(midi_bytes):
                     print(f'Control Change: {midi_bytes}')
                     if bytes_match_trigger(midi_bytes):
                         # Toggle zimbel on or off
@@ -408,9 +423,11 @@ async def midi_loop():
 
             elif current_mode == PROGRAM_MODE:
                 if is_program_change(midi_bytes):
+                    midi_trigger_type = TYPE_PROGRAM_CHANGE
                     save_midi_trigger(midi_bytes)
                     change_mode(ZIMBEL_MODE)
                 elif is_control_change(midi_bytes):
+                    midi_trigger_type = TYPE_CONTROL_CHANGE
                     save_midi_trigger(midi_bytes)
                     change_mode(ZIMBEL_MODE)
                 
@@ -540,13 +557,14 @@ def get_tempo():
 
 
 async def bell_loop():
-    global zimbel_state, current_strike_counter
+    global zimbel_state, zimbel_playing
 
     while True:
-        if zimbel_state:
+        if zimbel_state and not zimbel_playing:
+            zimbel_playing = True
+
             if ZIMBEL_MELODY:
                 await play_melody()
-                # await sleep_ms(50)
             else:
                 await play_random_melody()
         
@@ -555,32 +573,83 @@ async def bell_loop():
 
 
 async def play_melody():
-    global zimbel_state, ZIMBEL_MELODY
+    global zimbel_state, ZIMBEL_MELODY, DELAY_BETWEEN_MELODY_REPEAT
+    
+    beat_counter = 0
+    start_time = datetime.now()
 
-    for note in ZIMBEL_MELODY:
-        if zimbel_state:
-            # Logic for fading in tempo
-            if FADE_TEMPO_START and current_strike_counter < num_strikes_to_fade:
-                override_tempo = int(faded_tempos[current_strike_counter])
-            else:
-                override_tempo = None
+    while zimbel_state:
+        beat_duration = get_beat_duration(current_beat=beat_counter)
+        working_volume = get_working_volume(current_beat=beat_counter)
 
-            await play_note(note, override_tempo=override_tempo)
+        current_time = datetime.now()
+        elapsed_time = (current_time - start_time).total_seconds()
+
+        if elapsed_time >= beat_duration:
+            note = ZIMBEL_MELODY[beat_counter % len(ZIMBEL_MELODY)]
+            # await strike_bell(note, working_volume)
+            await strike_digital_bell(note, working_volume)
+
+            start_time = current_time
+            beat_counter += 1
+
+            if DELAY_BETWEEN_MELODY_REPEAT and (beat_counter % len(ZIMBEL_MELODY) == 0):
+                print('Melody finished')
+                await sleep_ms(50)
+        
+        await sleep_ms(YIELD_TIME)
+
+
+def get_beat_duration(current_beat):
+    global tempo, FADE_TEMPO_START, num_beats_to_fade, faded_tempos
+
+    if FADE_TEMPO_START and current_beat < num_beats_to_fade:
+        working_tempo = int(faded_tempos[current_beat])
+    else:
+        working_tempo = tempo
+    
+    return 60 / working_tempo
+
+
+def get_working_volume(current_beat):
+    global volume, FADE_VOLUME_START, num_beats_to_fade, faded_volumes
+
+    if FADE_VOLUME_START and current_beat < num_beats_to_fade:
+        working_volume = int(faded_volumes[current_beat])
+    else:
+        working_volume = volume
+    
+    return working_volume
 
 
 async def play_random_melody():
-    global zimbel_state, FADE_TEMPO_START, current_strike_counter, faded_tempos, num_strikes_to_fade
+    global zimbel_state, ABSOLUTE_MIN_VOLUME
+    
+    beat_counter = 0
+    start_time = datetime.now()
 
-    if zimbel_state:
-        # Logic for fading in tempo
-        if FADE_TEMPO_START and current_strike_counter < num_strikes_to_fade:
-            override_tempo = int(faded_tempos[current_strike_counter])
-        else:
-            override_tempo = None
+    while zimbel_state:
+        beat_duration = get_beat_duration(current_beat=beat_counter)
+        working_volume = get_working_volume(current_beat=beat_counter)
+
+        current_time = datetime.now()
+        elapsed_time = (current_time - start_time).total_seconds()
+
+        if elapsed_time >= beat_duration:
+            # Play a random note
+            random_note = get_random_note_by_weight()
+            # await strike_bell(random_note, working_volume)
+            await strike_digital_bell(random_note, working_volume)
+
+            # Play a second random note shortly after the first
+            # await sleep_ms(random.randint(0,30))
+            # random_note = get_random_note_by_weight()
+            # await strike_digital_bell(random_note, ABSOLUTE_MIN_VOLUME)
+            
+            start_time = current_time
+            beat_counter += 1
         
-        random_note = get_random_note_by_weight()
-        random_note_2 = get_random_note_by_weight()
-        await play_note(random_note, random_note_2, override_tempo=override_tempo)
+        await sleep_ms(YIELD_TIME)
 
 
 def get_random_note():
@@ -617,7 +686,7 @@ def get_random_note_by_weight():
     # assigning to -2 will allow the 2 oldest bells to be picked from
     # assigning to -3 forces the oldest bell to be picked, inherently removing the randomness
     # -3 and lower should not be used
-    note_weights[random_note] = -3
+    note_weights[random_note] = -1
 
     # increase the weight of all other notes by 1
     for note in note_weights:
@@ -627,39 +696,14 @@ def get_random_note_by_weight():
     return random_note
 
 
-async def play_note(note, note_2=None, num_beats=1, override_tempo=None, override_volume=None):
-    global BELLS_ENABLED, tempo, volume, FADE_VOLUME_START, current_strike_counter, faded_volumes
-
-    working_tempo = override_tempo if override_tempo else tempo
-    working_volume = override_volume if override_volume else volume
-
-    beat_duration_in_seconds = (60 / working_tempo) * num_beats
-    strike_duration_in_seconds = working_volume * 0.001
-    sleep_duration_in_seconds = beat_duration_in_seconds - strike_duration_in_seconds
-
-    # print(f'Playing {note.upper()} for {strike_duration_in_seconds} seconds')
-    if BELLS_ENABLED:
-        if FADE_VOLUME_START and current_strike_counter < num_strikes_to_fade:
-            working_volume = int(faded_volumes[current_strike_counter])
-        # await strike_bell(bells[note], working_volume)
-        await play_digital_bell(note, working_volume)
-        if note_2:
-            await sleep_ms(random.randint(10,30)) # 20
-            await play_digital_bell(note_2, 12)
-        current_strike_counter += 1
-    
-    # print(f'Sleeping for {sleep_duration_in_seconds} seconds')
-    await asyncio.sleep(sleep_duration_in_seconds)
-
-
-async def strike_bell(bell, strike_duration_in_ms):
-    global pico_led
+async def strike_bell(bell_name, strike_duration_in_ms):
+    global bells, pico_led
 
     print(f'Striking bell for {strike_duration_in_ms} ms')
     # pico_led.on() For testing
-    bell.on()
+    bells[bell_name].on()
     await sleep_ms(strike_duration_in_ms)
-    bell.off()
+    bells[bell_name].off()
     # pico_led.off() For testing
 
 
