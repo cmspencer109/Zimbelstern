@@ -218,11 +218,11 @@ async def zimbel_button_loop():
                 #print('Button pressed')
                 zimbel_button_state = True
                 
-                # Toggle button lamp on button press
+                # Toggle zimbel state
                 if zimbel_state:
-                    zimbel_button_lamp.value(False)
+                    zimbel_off()
                 else:
-                    zimbel_button_lamp.value(True)
+                    zimbel_on()
                 
                 # Debounce after press
                 await uasyncio.sleep_ms(DEBOUNCE_TIME)
@@ -231,12 +231,6 @@ async def zimbel_button_loop():
             if zimbel_button_state:
                 #print('Button released')
                 zimbel_button_state = False
-                
-                # Toggle zimbel state after button release
-                if zimbel_state:
-                    zimbel_off()
-                else:
-                    zimbel_on()
         
         # Yield control to event loop
         await uasyncio.sleep_ms(YIELD_TIME)
