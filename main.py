@@ -86,7 +86,7 @@ YIELD_TIME = 1
 
 # Set volume range of potentiometer
 # Value is the amount of time each electromagnet is powered on for (ms)
-ABSOLUTE_MIN_VOLUME = 11
+ABSOLUTE_MIN_VOLUME = 12
 MIN_VOLUME = 15
 MAX_VOLUME = 40
 
@@ -255,8 +255,8 @@ async def prepare_button_loop():
                 # Debounce after press
                 await uasyncio.sleep_ms(DEBOUNCE_TIME)
 
-            # Do something special if the prepare button is held for 10 seconds...
-            if time.ticks_diff(time.ticks_ms(), prepare_button_clock) >= 10000:
+            # Do something special if the prepare button is held for 5 seconds...
+            if time.ticks_diff(time.ticks_ms(), prepare_button_clock) >= 5000:
                 await _()
             
         else:  # Button is not being pressed
@@ -291,7 +291,7 @@ async def bell_loop():
             zimbel_playing = True
 
             if ZIMBEL_MELODY:
-                await play_melody()
+                await play_zimbel_melody(ZIMBEL_MELODY)
             else:
                 await play_random_melody()
         
@@ -337,47 +337,33 @@ def get_working_volume(current_beat):
     return working_volume
 
 
-async def hymn_player(melody, tempo):
-    global volume
-
-    beat_counter = 0
-    start_time = time.ticks_ms()
-
-    while beat_counter < len(melody):
-        note_name = melody[beat_counter][0]
-        note_duration = melody[beat_counter][1]
-
-        beat_duration = (60 / tempo)*note_duration
-
-        if time.ticks_diff(time.ticks_ms(), start_time) >= beat_duration*1000:
-            await strike_bell(note_name, volume)
-            start_time = time.ticks_ms()
-            beat_counter += 1
-        
-        await uasyncio.sleep_ms(YIELD_TIME)
-
-
-async def play_melody():
-    global zimbel_state
-    
-    beat_counter = 0
-    start_time = time.ticks_ms()
+async def play_zimbel_melody(melody):
+    global volume, tempo, zimbel_state
 
     while zimbel_state:
-        beat_duration = get_beat_duration(current_beat=beat_counter)
-        working_volume = get_working_volume(current_beat=beat_counter)
+        for note in melody:
+            beat_duration_in_ms = (60 / tempo)*1000
+            sleep_duration_in_ms = beat_duration_in_ms-volume
 
-        if time.ticks_diff(time.ticks_ms(), start_time) >= beat_duration*1000:
-            start_time = time.ticks_ms()
-            beat_counter += 1
-            note = ZIMBEL_MELODY[beat_counter % len(ZIMBEL_MELODY)]
-            await strike_bell(note, working_volume)
+            if zimbel_state:
+                await strike_bell(note, volume)
+                time.sleep_ms(int(sleep_duration_in_ms))
 
-            if DELAY_BETWEEN_MELODY_REPEAT and (beat_counter % len(ZIMBEL_MELODY) == 0):
-                print('Melody finished')
-                await uasyncio.sleep_ms(50)
-        
-        await uasyncio.sleep_ms(YIELD_TIME)
+
+async def play_hymn_melody(melody, override_volume=None, override_tempo=None, repeat=False):
+    global volume, tempo
+
+    working_volume = override_volume if override_volume else volume
+    working_tempo = override_tempo if override_tempo else tempo
+
+    for note in melody:
+        note_name = note[0]
+        note_duration = note[1]
+        beat_duration_in_ms = (60 / working_tempo)*note_duration*1000
+        sleep_duration_in_ms = beat_duration_in_ms-working_volume
+
+        await strike_bell(note_name, working_volume)
+        time.sleep_ms(int(sleep_duration_in_ms))
 
 
 async def play_random_melody():
@@ -484,7 +470,7 @@ async def _():
         ('g', 1), ('a', 1), ('g', 2), ('f', 4),
     ]
 
-    await hymn_player(hymn, tempo=120)
+    await play_hymn_melody(hymn, override_tempo=120)
     
     FADE_VOLUME_START = old_fade_volume_start_state
 
