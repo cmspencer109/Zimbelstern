@@ -2,13 +2,13 @@
 
 Code, documentation, and design files for the St. Martin Luther Zimbelstern.
 
-![Zimbelstern](images/_Z5A6332.jpg)
-![Zimbelstern](images/_Z5A6397.jpg)
+<!-- ![Zimbelstern](images/_Z5A6332.jpg)
+![Zimbelstern](images/_Z5A6397.jpg) -->
 
-<!-- <div style="display: flex; justify-content: space-between;">
+<div style="display: flex; justify-content: space-between;">
   <img src="images/_Z5A6332.jpg" width="49.5%" />
   <img src="images/_Z5A6397.jpg" width="49.5%" /> 
-</div> -->
+</div>
 
 ## Design Overview
 
