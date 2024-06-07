@@ -1,0 +1,5 @@
+(sym_lib_table
+  (version 7)
+  (lib (name "RPi Pico")(type "KiCad")(uri "${KIPRJMOD}/KiCad-RP-Pico/RP-Pico Libraries/MCU_RaspberryPi_and_Boards.kicad_sym")(options "")(descr ""))
+  (lib (name "eurocad")(type "Legacy")(uri "${KIPRJMOD}/Eurocad/eurocad.lib")(options "")(descr ""))
+)
