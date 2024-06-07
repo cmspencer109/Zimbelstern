@@ -12,13 +12,21 @@ ZIMBEL_MELODY = ''
 # ZIMBEL_MELODY = 'cagfd' # descending 
 # ZIMBEL_MELODY = 'dfgacagf' # ascending and descending
 
-FADE_VOLUME_START = True
-FADE_TEMPO_START = True
+FADE_VOLUME_START = False
+FADE_TEMPO_START = False
 FADE_IN_DURATION = 3 # seconds
 tempo = 300 # bpm
 STARTING_TEMPO = tempo-60 # bpm
-PLAY_SECOND_NOTE = False
-SECOND_NOTE_DELAY = 0 # ms
+PLAY_SECOND_NOTE = True
+SECOND_NOTE_DELAY = 30 # ms
+
+# FADE_VOLUME_START = False
+# FADE_TEMPO_START = True
+# FADE_IN_DURATION = 0 # seconds
+# tempo = 400 # bpm
+# STARTING_TEMPO = tempo-60 # bpm
+# PLAY_SECOND_NOTE = False
+# SECOND_NOTE_DELAY = 30 # ms
 
 # FOR DEBUGGING ONLY
 # Set to False if needed for disabling certain features
