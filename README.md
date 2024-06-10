@@ -36,6 +36,10 @@ Additionally, the MIDI connection is used to determine if any stops are engaged 
 
 * [JLCPCB](https://jlcpcb.com/) was used to order the PCB. The folder `Zimbel-2024-03-03` contains a KiCad export of all the files needed to order a new board from a PCB fabricator.
 
+## Meaning Behind the Name
+
+The name "St. Martin Luther Zimbelstern" reflects several key points about this zimbelstern. It is named after the great reformer Martin Luther who is remembered as we celebrate various 500-year anniversaries of Luther's work during the time of the reformation. Second, since the sound of the zimbelstern often signifies the song of heaven, the additional title of "St." reminds us that we are joined with Martin Luther and all those who are saints in heaven by Jesus' blood. Third, this zimbelstern was designed and built specifically for Martin Luther Church in Sunset Hills, Missouri whose name is also reflected in this name.
+
 ## Known Design Flaws
 
 This zimbelstern was developed rapidly over 6 months and has some flaws. Below is a list of things that should be improved in future versions:
