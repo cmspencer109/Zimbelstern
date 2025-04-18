@@ -12,21 +12,13 @@ ZIMBEL_MELODY = ''
 # ZIMBEL_MELODY = 'cagfd' # descending 
 # ZIMBEL_MELODY = 'dfgacagf' # ascending and descending
 
-FADE_VOLUME_START = False
+FADE_VOLUME_START = True
 FADE_TEMPO_START = False
-FADE_IN_DURATION = 3 # seconds
+FADE_IN_DURATION = 1 # seconds
 tempo = 300 # bpm
 STARTING_TEMPO = tempo-60 # bpm
 PLAY_SECOND_NOTE = True
 SECOND_NOTE_DELAY = 30 # ms
-
-# FADE_VOLUME_START = False
-# FADE_TEMPO_START = True
-# FADE_IN_DURATION = 0 # seconds
-# tempo = 400 # bpm
-# STARTING_TEMPO = tempo-60 # bpm
-# PLAY_SECOND_NOTE = False
-# SECOND_NOTE_DELAY = 30 # ms
 
 # FOR DEBUGGING ONLY
 # Set to False if needed for disabling certain features
@@ -94,9 +86,9 @@ YIELD_TIME = 1
 
 # Set volume range of potentiometer
 # Value is the amount of time each electromagnet is powered on for (ms)
-ABSOLUTE_MIN_VOLUME = 12
-MIN_VOLUME = 15
-MAX_VOLUME = 40
+ABSOLUTE_MIN_VOLUME = 10
+MIN_VOLUME = 12
+MAX_VOLUME = 20
 
 
 def get_spread(min_value, max_value, num_steps):
@@ -383,8 +375,9 @@ async def play_random_melody():
     while zimbel_state:
         beat_duration = get_beat_duration(current_beat=beat_counter)
         working_volume = get_working_volume(current_beat=beat_counter)
+        beat_duration_in_ms = beat_duration*1000
 
-        if time.ticks_diff(time.ticks_ms(), start_time) >= beat_duration*1000:
+        if time.ticks_diff(time.ticks_ms(), start_time) >= beat_duration_in_ms:
             start_time = time.ticks_ms()
             beat_counter += 1
 
@@ -435,7 +428,7 @@ def get_random_note_by_weight():
     # assigning to -2 will allow the 2 oldest bells to be picked from
     # assigning to -3 forces the oldest bell to be picked, inherently removing the randomness
     # -3 and lower should not be used
-    note_weights[random_note] = -1
+    note_weights[random_note] = -2
 
     # increase the weight of all other notes by 1
     for note in note_weights:
